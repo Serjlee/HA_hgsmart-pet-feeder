@@ -4,7 +4,7 @@ import time
 import uuid
 from typing import Any
 
-import requests
+import aiohttp
 
 from .const import BASE_URL, CLIENT_ID, CLIENT_SECRET
 
@@ -51,17 +51,20 @@ class HGSmartApiClient:
         headers["Authorization"] = "Bearer null"
 
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=10)
-            data = response.json()
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    data = await response.json()
 
-            if data.get("code") == 200:
-                self.access_token = data["data"]["accessToken"]
-                self.refresh_token = data["data"]["refreshToken"]
-                _LOGGER.info("Successfully logged in to HGSmart")
-                return True
-            else:
-                _LOGGER.error("Login failed: %s", data.get("msg"))
-                return False
+                    if data.get("code") == 200:
+                        self.access_token = data["data"]["accessToken"]
+                        self.refresh_token = data["data"]["refreshToken"]
+                        _LOGGER.info("Successfully logged in to HGSmart")
+                        return True
+                    else:
+                        _LOGGER.error("Login failed: %s", data.get("msg"))
+                        return False
         except Exception as e:
             _LOGGER.exception("Login error: %s", e)
             return False
@@ -74,17 +77,20 @@ class HGSmartApiClient:
         url = f"{BASE_URL}/oauth/refreshToken"
         payload = {"refreshtoken": self.refresh_token}
 
-        headers = self._get_headers()
+        headasync with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    data = await response.json()
 
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=10)
-            data = response.json()
-
-            if data.get("code") == 200:
-                self.access_token = data["data"]["accessToken"]
-                self.refresh_token = data["data"]["refreshToken"]
-                _LOGGER.info("Successfully refreshed token")
-                return True
+                    if data.get("code") == 200:
+                        self.access_token = data["data"]["accessToken"]
+                        self.refresh_token = data["data"]["refreshToken"]
+                        _LOGGER.info("Successfully refreshed token")
+                        return True
+                    else:
+                        _LOGGER.error("Token refresh failed: %s", data.get("msg"))
+                        return True
             else:
                 _LOGGER.error("Token refresh failed: %s", data.get("msg"))
                 return False
@@ -92,19 +98,22 @@ class HGSmartApiClient:
             _LOGGER.exception("Token refresh error: %s", e)
             return False
 
-    async def get_devices(self) -> list[dict[str, Any]]:
-        """Get list of all devices."""
-        url = f"{BASE_URL}/app/device/list"
-        headers = self._get_headers()
+    async deasync with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    data = await response.json()
 
-        try:
-            response = requests.get(url, headers=headers, timeout=10)
-            data = response.json()
-
-            if data.get("code") == 200:
-                return data.get("data", [])
-            elif data.get("code") == 401:
-                # Token expired, try refresh
+                    if data.get("code") == 200:
+                        return data.get("data", [])
+                    elif data.get("code") == 401:
+                        # Token expired, try refresh
+                        if await self.refresh_access_token():
+                            return await self.get_devices()
+                        return []
+                    else:
+                        _LOGGER.error("Get devices failed: %s", data.get("msg"))
+                        # Token expired, try refresh
                 if await self.refresh_access_token():
                     return await self.get_devices()
                 return []
@@ -115,14 +124,17 @@ class HGSmartApiClient:
             _LOGGER.exception("Get devices error: %s", e)
             return []
 
-    async def get_feeder_stats(self, device_id: str) -> dict[str, Any] | None:
-        """Get feeder statistics (remaining food, desiccant expiration)."""
-        url = f"{BASE_URL}/app/device/feeder/summary/{device_id}"
-        headers = self._get_headers()
+    async deasync with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    data = await response.json()
 
-        try:
-            response = requests.get(url, headers=headers, timeout=10)
-            data = response.json()
+                    if data.get("code") == 200:
+                        return data.get("data")
+                    else:
+                        _LOGGER.error("Get feeder stats failed: %s", data.get("msg"))
+                    data = response.json()
 
             if data.get("code") == 200:
                 return data.get("data")
@@ -130,14 +142,17 @@ class HGSmartApiClient:
                 _LOGGER.error("Get feeder stats failed: %s", data.get("msg"))
                 return None
         except Exception as e:
-            _LOGGER.exception("Get feeder stats error: %s", e)
-            return None
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    data = await response.json()
 
-    async def get_device_attributes(self, device_id: str) -> dict[str, Any] | None:
-        """Get device attributes including feeding schedules."""
-        url = f"{BASE_URL}/app/device/attribute/{device_id}"
-        headers = self._get_headers()
-
+                    if data.get("code") == 200:
+                        return data.get("data")
+                    else:
+                        _LOGGER.error("Get device attributes failed: %s", data.get("msg"))
+        
         try:
             response = requests.get(url, headers=headers, timeout=10)
             data = response.json()
@@ -209,6 +224,8 @@ class HGSmartApiClient:
         enabled: bool = True,
     ) -> bool:
         """Set a feeding schedule."""
+        import json
+        
         url = f"{BASE_URL}/app/device/attribute/{device_id}"
 
         # Build command payload
@@ -236,36 +253,39 @@ class HGSmartApiClient:
         }
 
         try:
-            import json
-
             payload_json = json.dumps(payload_dict)
-            response = requests.put(
-                url,
-                headers=headers,
-                files={"command": (None, payload_json)},
-                timeout=10,
-            )
-
-            data = response.json()
-            if data.get("code") == 200:
-                _LOGGER.info(
-                    "Schedule %d set to %02d:%02d, %d portions, enabled=%s",
-                    slot,
-                    hour,
-                    minute,
-                    portions,
-                    enabled,
-                )
-                return True
-            else:
-                _LOGGER.error("Set schedule failed: %s", data.get("msg"))
-                return False
+            
+            # Create multipart form data
+            data = aiohttp.FormData()
+            data.add_field('command', payload_json, content_type='application/json')
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.put(
+                    url, headers=headers, data=data, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    result = await response.json()
+                    
+                    if result.get("code") == 200:
+                        _LOGGER.info(
+                            "Schedule %d set to %02d:%02d, %d portions, enabled=%s",
+                            slot,
+                            hour,
+                            minute,
+                            portions,
+                            enabled,
+                        )
+                        return True
+                    else:
+                        _LOGGER.error("Set schedule failed: %s", result.get("msg"))
+                        return False
         except Exception as e:
             _LOGGER.exception("Set schedule error: %s", e)
             return False
 
     async def send_feed_command(self, device_id: str) -> bool:
         """Send feed command to device."""
+        import json
+        
         url = f"{BASE_URL}/app/device/attribute/{device_id}"
 
         # Build command payload
@@ -294,23 +314,24 @@ class HGSmartApiClient:
         }
 
         try:
-            import json
-
             payload_json = json.dumps(payload_dict)
-            response = requests.put(
-                url,
-                headers=headers,
-                files={"command": (None, payload_json)},
-                timeout=10,
-            )
-
-            data = response.json()
-            if data.get("code") == 200:
-                _LOGGER.info("Feed command sent successfully to %s", device_id)
-                return True
-            else:
-                _LOGGER.error("Feed command failed: %s", data.get("msg"))
-                return False
+            
+            # Create multipart form data
+            data = aiohttp.FormData()
+            data.add_field('command', payload_json, content_type='application/json')
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.put(
+                    url, headers=headers, data=data, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    result = await response.json()
+                    
+                    if result.get("code") == 200:
+                        _LOGGER.info("Feed command sent successfully to %s", device_id)
+                        return True
+                    else:
+                        _LOGGER.error("Feed command failed: %s", result.get("msg"))
+                        return False
         except Exception as e:
             _LOGGER.exception("Feed command error: %s", e)
             return False
