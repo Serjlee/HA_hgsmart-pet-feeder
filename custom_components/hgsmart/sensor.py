@@ -92,7 +92,9 @@ class HGSmartFoodRemainingSensor(HGSmartSensorBase):
         """Return the state of the sensor."""
         device_data = self.coordinator.data.get(self.device_id)
         if device_data and device_data.get("stats"):
-            return device_data["stats"].get("remaining")
+            remaining = device_data["stats"].get("remaining")
+            if remaining is not None:
+                return int(remaining)
         return None
 
 
@@ -118,5 +120,7 @@ class HGSmartDesiccantExpirySensor(HGSmartSensorBase):
         """Return the state of the sensor."""
         device_data = self.coordinator.data.get(self.device_id)
         if device_data and device_data.get("stats"):
-            return device_data["stats"].get("desiccantExpire")
+            desiccant = device_data["stats"].get("desiccantExpire")
+            if desiccant is not None:
+                return int(desiccant)
         return None
