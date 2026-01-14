@@ -3,11 +3,16 @@
     "step": {
       "user": {
         "title": "HGSmart Pet Feeder",
-        "description": "Enter your HGSmart account credentials",
+        "description": "Enter your HGSmart account credentials and general settings",
         "data": {
           "username": "Username (Email)",
-          "password": "Password"
+          "password": "Password",
+          "update_interval": "Update Interval (minutes)"
         }
+      },
+      "rooms": {
+        "title": "Assign Rooms",
+        "description": "Select a room for each discovered device."
       }
     },
     "error": {

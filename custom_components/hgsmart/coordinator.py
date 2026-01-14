@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import HGSmartApiClient
-from .const import DOMAIN, UPDATE_INTERVAL
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -15,13 +15,13 @@ _LOGGER = logging.getLogger(__name__)
 class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching HGSmart data."""
 
-    def __init__(self, hass: HomeAssistant, api: HGSmartApiClient) -> None:
+    def __init__(self, hass: HomeAssistant, api: HGSmartApiClient, update_interval: int) -> None:
         """Initialize the coordinator."""
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=timedelta(minutes=update_interval),
         )
         self.api = api
 

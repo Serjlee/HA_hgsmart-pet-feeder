@@ -9,9 +9,11 @@ CLIENT_SECRET = "ss9Ytzb4gSceaPhwhKteAPLiVP4pmU8zxLEcWuscM6Vsnj7wMt"
 # Configuration
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
+CONF_UPDATE_INTERVAL = "update_interval"
+CONF_DEVICE_ROOMS = "device_rooms"
 
-# Update interval (5 minutes)
-UPDATE_INTERVAL = 300
+# Default settings
+DEFAULT_UPDATE_INTERVAL = 5
 
 # Attributes
 ATTR_DEVICE_ID = "device_id"
