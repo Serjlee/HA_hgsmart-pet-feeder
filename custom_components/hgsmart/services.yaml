@@ -3,9 +3,8 @@ feed:
   name: Feed Pets
   description: Trigger feeding with a specific number of portions
   target:
-    entity:
+    device:
       integration: hgsmart
-      domain: button
   fields:
     portions:
       name: Portions

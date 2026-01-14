@@ -7,8 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
-from homeassistant.helpers import device_registry as dr, entity_registry as er
-import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers import device_registry as dr
 
 from .api import HGSmartApiClient
 from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
@@ -20,13 +19,14 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_FEED = "feed"
 ATTR_PORTIONS = "portions"
 
-# Service schema
+# Service schema - allow extra keys for target selector data
 SERVICE_FEED_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_PORTIONS, default=1): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=10)
         ),
-    }
+    },
+    extra=vol.ALLOW_EXTRA,
 )
 
 PLATFORMS: list[Platform] = [
@@ -105,43 +105,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """Handle the feed service call."""
         portions = call.data.get(ATTR_PORTIONS, 1)
 
-        # Get entity IDs from target (HA passes this via call.data when using entity target selector)
-        target_entity_ids = []
+        # Get device IDs from target (HA passes this via call.data when using device target selector)
+        target_device_ids = []
         if "target" in call.data:
             target = call.data["target"]
-            if "entity_id" in target:
-                entity_ids = target["entity_id"]
-                if isinstance(entity_ids, str):
-                    target_entity_ids = [entity_ids]
+            if "device_id" in target:
+                device_ids = target["device_id"]
+                if isinstance(device_ids, str):
+                    target_device_ids = [device_ids]
                 else:
-                    target_entity_ids = entity_ids
+                    target_device_ids = device_ids
 
-        if not target_entity_ids:
-            raise HomeAssistantError("No entities specified in target")
+        if not target_device_ids:
+            raise HomeAssistantError("No devices specified in target")
 
-        _LOGGER.info("Feed service called for entities %s with %d portions", target_entity_ids, portions)
+        _LOGGER.info("Feed service called for devices %s with %d portions", target_device_ids, portions)
 
-        # Get device registry to resolve entities to devices
+        # Get device registry
         dev_reg = dr.async_get(hass)
-        entity_reg = er.async_get(hass)
 
-        # Process each target entity and extract unique devices
-        processed_devices = set()
-        for entity_id in target_entity_ids:
-            # Get entity entry
-            entity_entry = entity_reg.async_get(entity_id)
-            if not entity_entry:
-                _LOGGER.error("Entity %s not found in entity registry", entity_id)
-                continue
-
-            # Get device from entity
-            if not entity_entry.device_id:
-                _LOGGER.error("Entity %s has no associated device", entity_id)
-                continue
-
-            device = dev_reg.async_get(entity_entry.device_id)
+        # Process each target device
+        for ha_device_id in target_device_ids:
+            # Get device from registry
+            device = dev_reg.async_get(ha_device_id)
             if not device:
-                _LOGGER.error("Device for entity %s not found in device registry", entity_id)
+                _LOGGER.error("Device %s not found in device registry", ha_device_id)
                 continue
 
             # Find our device_id from the device identifiers
@@ -152,13 +140,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     break
 
             if not our_device_id:
-                _LOGGER.error("Could not find device identifier for entity %s", entity_id)
+                _LOGGER.error("Could not find device identifier for %s", ha_device_id)
                 continue
-
-            # Skip if we already processed this device (multiple entities could be from same device)
-            if our_device_id in processed_devices:
-                continue
-            processed_devices.add(our_device_id)
 
             # Find the API client for this device
             api_client = None
