@@ -1,5 +1,6 @@
 """Number platform for HGSmart Pet Feeder."""
 import logging
+from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
@@ -7,8 +8,10 @@ from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .api import HGSmartApiClient
 from .const import DOMAIN
 from .coordinator import HGSmartDataUpdateCoordinator
 from .helpers import get_device_info
@@ -25,16 +28,13 @@ async def async_setup_entry(
     coordinator: HGSmartDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     api = hass.data[DOMAIN][entry.entry_id]["api"]
 
-    # Initialize storage for manual feed portions
+    # Initialize storage for manual feed portions (needed for button.py)
     if "manual_feed_portions" not in hass.data[DOMAIN][entry.entry_id]:
         hass.data[DOMAIN][entry.entry_id]["manual_feed_portions"] = {}
 
     entities = []
     for device_id, device_data in coordinator.data.items():
         device_info = device_data["device_info"]
-
-        # Initialize default portions for this device
-        hass.data[DOMAIN][entry.entry_id]["manual_feed_portions"][device_id] = 1
 
         # Add manual feed portions entity
         entities.append(
@@ -49,7 +49,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class HGSmartManualFeedPortions(CoordinatorEntity, NumberEntity):
+class HGSmartManualFeedPortions(CoordinatorEntity, RestoreEntity, NumberEntity):
     """Number entity for manual feed portions."""
 
     def __init__(
@@ -58,7 +58,7 @@ class HGSmartManualFeedPortions(CoordinatorEntity, NumberEntity):
         entry_id: str,
         coordinator: HGSmartDataUpdateCoordinator,
         device_id: str,
-        device_info: dict,
+        device_info: dict[str, Any],
     ) -> None:
         """Initialize the number entity."""
         super().__init__(coordinator)
@@ -73,17 +73,34 @@ class HGSmartManualFeedPortions(CoordinatorEntity, NumberEntity):
         self._attr_native_step = 1
         self._attr_mode = NumberMode.BOX
         self._attr_device_info = get_device_info(device_id, device_info)
+        self._native_value = 1  # Default value
+
+    async def async_added_to_hass(self) -> None:
+        """Restore previous state when entity is added to hass."""
+        await super().async_added_to_hass()
+
+        # Restore previous value if available
+        if (last_state := await self.async_get_last_state()) is not None:
+            if last_state.state not in (None, "unknown", "unavailable"):
+                try:
+                    self._native_value = int(float(last_state.state))
+                except (ValueError, TypeError):
+                    self._native_value = 1
+
+        # Sync with hass.data for button.py compatibility
+        self.hass.data[DOMAIN][self.entry_id]["manual_feed_portions"][self.device_id] = self._native_value
 
     @property
     def native_value(self) -> int:
         """Return the portions value."""
-        return int(
-            self.hass.data[DOMAIN][self.entry_id]["manual_feed_portions"].get(self.device_id, 1)
-        )
+        return self._native_value
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the portions value."""
-        self.hass.data[DOMAIN][self.entry_id]["manual_feed_portions"][self.device_id] = int(value)
+        self._native_value = int(value)
+        # Sync with hass.data for button.py compatibility
+        self.hass.data[DOMAIN][self.entry_id]["manual_feed_portions"][self.device_id] = self._native_value
+        self.async_write_ha_state()
 
     @property
     def available(self) -> bool:
@@ -100,9 +117,9 @@ class HGSmartFoodRemainingNumber(CoordinatorEntity, NumberEntity):
     def __init__(
         self,
         coordinator: HGSmartDataUpdateCoordinator,
-        api,
+        api: HGSmartApiClient,
         device_id: str,
-        device_info: dict,
+        device_info: dict[str, Any],
     ) -> None:
         """Initialize the number entity."""
         super().__init__(coordinator)

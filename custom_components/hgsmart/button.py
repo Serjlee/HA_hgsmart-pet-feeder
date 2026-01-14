@@ -1,5 +1,6 @@
 """Button platform for HGSmart Pet Feeder."""
 import logging
+from typing import Any
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
@@ -44,7 +45,7 @@ class HGSmartFeedButton(CoordinatorEntity, ButtonEntity):
         coordinator: HGSmartDataUpdateCoordinator,
         api: HGSmartApiClient,
         device_id: str,
-        device_info: dict,
+        device_info: dict[str, Any],
     ) -> None:
         """Initialize the button."""
         super().__init__(coordinator)
@@ -87,7 +88,7 @@ class HGSmartResetDesiccantButton(CoordinatorEntity, ButtonEntity):
         coordinator: HGSmartDataUpdateCoordinator,
         api: HGSmartApiClient,
         device_id: str,
-        device_info: dict,
+        device_info: dict[str, Any],
     ) -> None:
         """Initialize the button."""
         super().__init__(coordinator)

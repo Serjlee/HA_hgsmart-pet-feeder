@@ -1,4 +1,5 @@
 """API client for HGSmart Pet Feeder."""
+import asyncio
 import json
 import logging
 import time
@@ -108,7 +109,7 @@ class HGSmartApiClient:
                     _LOGGER.error("Request failed: %s", data.get("msg"))
                     return None
 
-        except Exception as e:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             _LOGGER.exception("Request error to %s: %s", url, e)
             return None
 
@@ -142,7 +143,7 @@ class HGSmartApiClient:
                 else:
                     _LOGGER.error("Login failed: %s", data.get("msg"))
                     return False
-        except Exception as e:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             _LOGGER.exception("Login error: %s", e)
             return False
 
@@ -172,7 +173,7 @@ class HGSmartApiClient:
                 else:
                     _LOGGER.error("Token refresh failed: %s", data.get("msg"))
                     return False
-        except Exception as e:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             _LOGGER.exception("Token refresh error: %s", e)
             return False
 

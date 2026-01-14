@@ -1,5 +1,6 @@
 """Binary sensor platform for HGSmart Pet Feeder."""
 import logging
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -40,7 +41,7 @@ class HGSmartOnlineSensor(CoordinatorEntity, BinarySensorEntity):
         self,
         coordinator: HGSmartDataUpdateCoordinator,
         device_id: str,
-        device_info: dict,
+        device_info: dict[str, Any],
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)

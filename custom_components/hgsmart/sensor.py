@@ -1,5 +1,6 @@
 """Sensor platform for HGSmart Pet Feeder."""
 import logging
+from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -47,7 +48,7 @@ class HGSmartSensorBase(CoordinatorEntity, SensorEntity):
         self,
         coordinator: HGSmartDataUpdateCoordinator,
         device_id: str,
-        device_info: dict,
+        device_info: dict[str, Any],
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -71,7 +72,7 @@ class HGSmartFoodRemainingSensor(HGSmartSensorBase):
         self,
         coordinator: HGSmartDataUpdateCoordinator,
         device_id: str,
-        device_info: dict,
+        device_info: dict[str, Any],
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, device_id, device_info)
@@ -99,7 +100,7 @@ class HGSmartDesiccantExpirySensor(HGSmartSensorBase):
         self,
         coordinator: HGSmartDataUpdateCoordinator,
         device_id: str,
-        device_info: dict,
+        device_info: dict[str, Any],
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, device_id, device_info)
