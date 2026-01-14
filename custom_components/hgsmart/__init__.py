@@ -4,6 +4,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 
 from .api import HGSmartApiClient
 from .const import DOMAIN
@@ -28,16 +29,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Initialize API client
     api = HGSmartApiClient(username, password)
-    
-    # Login
+
+    # Login - raise ConfigEntryNotReady on failure so HA will retry
     if not await api.login():
         _LOGGER.error("Failed to login to HGSmart API")
-        return False
+        raise ConfigEntryNotReady("Failed to authenticate with HGSmart API")
 
     # Create data update coordinator
     coordinator = HGSmartDataUpdateCoordinator(hass, api)
 
-    # Fetch initial data
+    # Fetch initial data - this will raise ConfigEntryNotReady on failure
     await coordinator.async_config_entry_first_refresh()
 
     # Store coordinator

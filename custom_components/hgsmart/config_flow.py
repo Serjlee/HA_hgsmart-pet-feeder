@@ -2,6 +2,7 @@
 import logging
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -43,7 +44,7 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if await api.login():
                     # Get devices to verify connection
                     devices = await api.get_devices()
-                    
+
                     if devices:
                         # Create unique ID from username
                         await self.async_set_unique_id(username.lower())
@@ -60,9 +61,15 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         errors["base"] = "no_devices"
                 else:
                     errors["base"] = "invalid_auth"
+            except aiohttp.ClientError:
+                _LOGGER.exception("Connection error during login")
+                errors["base"] = "cannot_connect"
+            except TimeoutError:
+                _LOGGER.exception("Timeout during login")
+                errors["base"] = "cannot_connect"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception during login")
-                errors["base"] = "cannot_connect"
+                errors["base"] = "unknown"
 
         return self.async_show_form(
             step_id="user",

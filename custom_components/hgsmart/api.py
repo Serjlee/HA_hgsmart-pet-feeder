@@ -171,14 +171,27 @@ class HGSmartApiClient:
         """Parse plan value string (HHMMPPEE) into components."""
         if not plan_value or plan_value == "0":
             return None
-        
+
+        # Validate minimum length (HHMMPPEE = 8 chars, but we need at least 7)
+        if len(plan_value) < 7:
+            _LOGGER.warning("Invalid plan value length: %s", plan_value)
+            return None
+
         try:
             # Format: HHMMPPEE
             hour = int(plan_value[0:2])
             minute = int(plan_value[2:4])
             portions = int(plan_value[4:6])
             enabled = plan_value[6:7] == "1"
-            
+
+            # Validate ranges
+            if not (0 <= hour <= 23 and 0 <= minute <= 59 and portions >= 1):
+                _LOGGER.warning(
+                    "Invalid plan values: hour=%d, minute=%d, portions=%d",
+                    hour, minute, portions
+                )
+                return None
+
             return {
                 "hour": hour,
                 "minute": minute,
@@ -186,7 +199,7 @@ class HGSmartApiClient:
                 "enabled": enabled,
                 "time": f"{hour:02d}:{minute:02d}",
             }
-        except Exception as e:
+        except (ValueError, IndexError) as e:
             _LOGGER.error("Error parsing plan value %s: %s", plan_value, e)
             return None
 
