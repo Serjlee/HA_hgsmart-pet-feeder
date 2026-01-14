@@ -26,7 +26,7 @@ async def async_setup_entry(
     entities = []
     for device_id, device_data in coordinator.data.items():
         device_info = device_data["device_info"]
-        entities.append(HGSmartFeedButton(coordinator, api, device_id, device_info))
+        entities.append(HGSmartFeedButton(hass, entry.entry_id, coordinator, api, device_id, device_info))
 
     async_add_entities(entities)
 
@@ -36,6 +36,8 @@ class HGSmartFeedButton(CoordinatorEntity, ButtonEntity):
 
     def __init__(
         self,
+        hass: HomeAssistant,
+        entry_id: str,
         coordinator: HGSmartDataUpdateCoordinator,
         api: HGSmartApiClient,
         device_id: str,
@@ -43,6 +45,8 @@ class HGSmartFeedButton(CoordinatorEntity, ButtonEntity):
     ) -> None:
         """Initialize the button."""
         super().__init__(coordinator)
+        self.hass = hass
+        self.entry_id = entry_id
         self.api = api
         self.device_id = device_id
         self._attr_unique_id = f"{device_id}_feed"
@@ -58,9 +62,11 @@ class HGSmartFeedButton(CoordinatorEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Handle the button press."""
-        _LOGGER.info("Feed button pressed for device %s", self.device_id)
-        success = await self.api.send_feed_command(self.device_id)
-        
+        # Get portions from the manual feed portions entity
+        portions = self.hass.data[DOMAIN][self.entry_id].get("manual_feed_portions", {}).get(self.device_id, 1)
+        _LOGGER.info("Feed button pressed for device %s (%d portions)", self.device_id, portions)
+        success = await self.api.send_feed_command(self.device_id, portions)
+
         if success:
             _LOGGER.info("Feed command sent successfully")
         else:

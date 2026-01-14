@@ -23,10 +23,22 @@ async def async_setup_entry(
     coordinator: HGSmartDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     api: HGSmartApiClient = hass.data[DOMAIN][entry.entry_id]["api"]
 
+    # Initialize storage for manual feed portions
+    if "manual_feed_portions" not in hass.data[DOMAIN][entry.entry_id]:
+        hass.data[DOMAIN][entry.entry_id]["manual_feed_portions"] = {}
+
     entities = []
     for device_id, device_data in coordinator.data.items():
         device_info = device_data["device_info"]
-        
+
+        # Initialize default portions for this device
+        hass.data[DOMAIN][entry.entry_id]["manual_feed_portions"][device_id] = 1
+
+        # Add manual feed portions entity
+        entities.append(
+            HGSmartManualFeedPortions(hass, entry.entry_id, coordinator, device_id, device_info)
+        )
+
         # Add number entity for each schedule slot
         for slot in range(SCHEDULE_SLOTS):
             entities.append(
@@ -106,6 +118,57 @@ class HGSmartSchedulePortions(CoordinatorEntity, NumberEntity):
         
         # Refresh data
         await self.coordinator.async_request_refresh()
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.device_id in self.coordinator.data
+        )
+
+
+class HGSmartManualFeedPortions(CoordinatorEntity, NumberEntity):
+    """Number entity for manual feed portions."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry_id: str,
+        coordinator: HGSmartDataUpdateCoordinator,
+        device_id: str,
+        device_info: dict,
+    ) -> None:
+        """Initialize the number entity."""
+        super().__init__(coordinator)
+        self.hass = hass
+        self.entry_id = entry_id
+        self.device_id = device_id
+        self._attr_unique_id = f"{device_id}_manual_feed_portions"
+        self._attr_name = f"{device_info['name']} Manual Feed Portions"
+        self._attr_icon = "mdi:food"
+        self._attr_native_min_value = 1
+        self._attr_native_max_value = 10
+        self._attr_native_step = 1
+        self._attr_mode = NumberMode.BOX
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, device_id)},
+            "name": device_info["name"],
+            "manufacturer": "HGSmart",
+            "model": device_info["type"],
+            "sw_version": device_info.get("fwVersion"),
+        }
+
+    @property
+    def native_value(self) -> float:
+        """Return the portions value."""
+        return float(
+            self.hass.data[DOMAIN][self.entry_id]["manual_feed_portions"].get(self.device_id, 1)
+        )
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the portions value."""
+        self.hass.data[DOMAIN][self.entry_id]["manual_feed_portions"][self.device_id] = int(value)
 
     @property
     def available(self) -> bool:

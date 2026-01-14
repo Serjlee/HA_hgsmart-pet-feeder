@@ -168,35 +168,48 @@ class HGSmartApiClient:
             return None
 
     def parse_plan_value(self, plan_value: str) -> dict[str, Any] | None:
-        """Parse plan value string (HHMMPPEE) into components."""
+        """Parse plan value string from API response.
+
+        Format: HHMMSSPE (8 chars)
+        - HH: Hour (00-23)
+        - MM: Minute (00-59), or 93 = disabled marker
+        - SS: Slot info
+        - P: Portions (single digit 1-9)
+        - E: Slot number
+        """
         if not plan_value or plan_value == "0":
             return None
 
-        # Validate minimum length (HHMMPPEE = 8 chars, but we need at least 7)
-        if len(plan_value) < 7:
-            _LOGGER.warning("Invalid plan value length: %s", plan_value)
+        if len(plan_value) < 8:
+            _LOGGER.warning("Invalid plan value length %d (raw: %s)", len(plan_value), plan_value)
             return None
 
         try:
-            # Format: HHMMPPEE
             hour = int(plan_value[0:2])
             minute = int(plan_value[2:4])
-            portions = int(plan_value[4:6])
-            enabled = plan_value[6:7] == "1"
+            portions = int(plan_value[6])  # Single digit at position 6
 
-            # Validate ranges
-            if not (0 <= hour <= 23 and 0 <= minute <= 59 and portions >= 1):
+            # Minute >= 90 is used as a special marker for disabled/deleted schedules
+            if minute >= 90:
+                return None
+
+            # Validate hour and minute ranges
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
                 _LOGGER.warning(
-                    "Invalid plan values: hour=%d, minute=%d, portions=%d",
-                    hour, minute, portions
+                    "Invalid plan time values (raw: %s): hour=%d, minute=%d",
+                    plan_value, hour, minute
                 )
+                return None
+
+            # Portions=0 means empty schedule
+            if portions == 0:
                 return None
 
             return {
                 "hour": hour,
                 "minute": minute,
                 "portions": portions,
-                "enabled": enabled,
+                "enabled": True,
                 "time": f"{hour:02d}:{minute:02d}",
             }
         except (ValueError, IndexError) as e:
@@ -206,27 +219,32 @@ class HGSmartApiClient:
     def build_plan_value(
         self, hour: int, minute: int, portions: int, slot: int, operation: str = "edit"
     ) -> str:
-        """Build plan value string (HHMMPPEE)."""
-        # Operation mapping: create=3, edit=2, disable=0, delete=special
+        """Build plan value string for API.
+
+        Format: HH9MMSPO (8 chars)
+        - HH: Hour (00-23), or 00 for disable
+        - 9: Fixed separator
+        - MM: Minute (00-59)
+        - S: Slot number (0-5)
+        - P: Portions (single digit 1-9)
+        - O: Operation (3=create, 2=edit)
+        """
+        # Operation mapping: create=3, edit=2
         if operation == "create":
-            enabled = 1
             op_code = 3
         elif operation == "edit":
-            enabled = 1
             op_code = 2
         elif operation == "disable":
-            enabled = 0
-            op_code = 2
+            # Disable format: 009MM + slot + portions + 2
+            return f"009{minute:02d}{slot}{portions}{2}"
         elif operation == "delete":
-            # Special format for delete: 3200PPSS
-            return f"3200{portions:02d}{slot}{1}"
+            # Delete format: 32000 + slot + portions + 1
+            return f"32000{slot}{portions}1"
         else:
-            enabled = 1
             op_code = 2
 
-        # Format: HHMMPPEE where EE = enabled(0/1) + slot + opcode
-        ee = f"{enabled}{slot}{op_code}"
-        return f"{hour:02d}{minute:02d}{portions:02d}{ee}"
+        # Format: HH9MMSPO
+        return f"{hour:02d}9{minute:02d}{slot}{portions}{op_code}"
 
     async def set_feeding_schedule(
         self,
@@ -294,7 +312,7 @@ class HGSmartApiClient:
             _LOGGER.exception("Set schedule error: %s", e)
             return False
 
-    async def send_feed_command(self, device_id: str) -> bool:
+    async def send_feed_command(self, device_id: str, portions: int = 1) -> bool:
         """Send feed command to device."""
         url = f"{BASE_URL}/app/device/attribute/{device_id}"
 
@@ -305,7 +323,8 @@ class HGSmartApiClient:
 
         current_minute = time.localtime().tm_min
         minute_hex = f"{current_minute:02x}"
-        command_value = f"0120{minute_hex}01"
+        portions_hex = f"{portions:02x}"
+        command_value = f"0120{minute_hex}{portions_hex}"
 
         payload_dict = {
             "ctrl": {"identifier": "userfoodframe", "value": command_value},
@@ -337,7 +356,7 @@ class HGSmartApiClient:
                     result = await response.json()
                     
                     if result.get("code") == 200:
-                        _LOGGER.info("Feed command sent successfully to %s", device_id)
+                        _LOGGER.info("Feed command sent successfully to %s (%d portions)", device_id, portions)
                         return True
                     else:
                         _LOGGER.error("Feed command failed: %s", result.get("msg"))
