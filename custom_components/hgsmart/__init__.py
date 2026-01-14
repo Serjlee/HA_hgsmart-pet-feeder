@@ -15,7 +15,7 @@ from homeassistant.helpers import device_registry as dr
 
 from .api import HGSmartApiClient
 
-from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, CONF_DEVICE_ROOMS
+from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
 
 from .coordinator import HGSmartDataUpdateCoordinator
 
@@ -105,43 +105,53 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 
-    # Assign devices to areas if configured
+    # Register devices with clean names
 
-    device_rooms = entry.data.get(CONF_DEVICE_ROOMS)
+    dev_reg = dr.async_get(hass)
 
-    if device_rooms:
+    for device_id, device_data in coordinator.data.items():
 
-        dev_reg = dr.async_get(hass)
+        device_info = device_data["device_info"]
 
-        for device_id, device_data in coordinator.data.items():
 
-            if device_id in device_rooms and device_rooms[device_id]:
 
-                area_id = device_rooms[device_id]
+        # Clean device name: remove line breaks, extra spaces, limit length
 
-                device_info = device_data["device_info"]
+        raw_name = device_info.get("name", f"Device {device_id}")
 
-                
+        clean_name = " ".join(raw_name.split())  # Remove line breaks and extra spaces
 
-                # Pre-create/update device in registry
+        if len(clean_name) > 50:
 
-                dev_reg.async_get_or_create(
+            clean_name = clean_name[:47] + "..."
 
-                    config_entry_id=entry.entry_id,
 
-                    identifiers={(DOMAIN, device_id)},
 
-                    manufacturer="HGSmart",
+        # Clean model name
 
-                    model=device_info.get("type"),
+        raw_model = device_info.get("type", "Pet Feeder")
 
-                    name=device_info.get("name"),
+        clean_model = " ".join(raw_model.split())
 
-                    sw_version=device_info.get("fwVersion"),
 
-                    suggested_area=area_id,
 
-                )
+        # Pre-create/update device in registry
+
+        dev_reg.async_get_or_create(
+
+            config_entry_id=entry.entry_id,
+
+            identifiers={(DOMAIN, device_id)},
+
+            manufacturer="HGSmart",
+
+            model=clean_model,
+
+            name=clean_name,
+
+            sw_version=device_info.get("fwVersion"),
+
+        )
 
 
 

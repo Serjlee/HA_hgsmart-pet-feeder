@@ -10,8 +10,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.data_entry_flow import FlowResult
 
 from .api import HGSmartApiClient
-from homeassistant.helpers.selector import AreaSelector, AreaSelectorConfig
-from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, CONF_DEVICE_ROOMS
+from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,8 +30,6 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
-        self.login_data: dict[str, Any] | None = None
-        self.discovered_devices: list[dict[str, Any]] = []
         self._reauth_entry: config_entries.ConfigEntry | None = None
 
     @staticmethod
@@ -66,10 +63,11 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         await self.async_set_unique_id(username.lower())
                         self._abort_if_unique_id_configured()
 
-                        # Save data for next step
-                        self.login_data = user_input
-                        self.discovered_devices = devices
-                        return await self.async_step_rooms()
+                        # Create entry directly without room assignment
+                        return self.async_create_entry(
+                            title=f"HGSmart ({username})",
+                            data=user_input,
+                        )
                     else:
                         errors["base"] = "no_devices"
                 else:
@@ -88,44 +86,6 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
             errors=errors,
-        )
-
-    async def async_step_rooms(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the room assignment step."""
-        if user_input is not None:
-            # Create the entry with room data
-            data = self.login_data.copy()
-            data[CONF_DEVICE_ROOMS] = user_input
-            
-            username = data[CONF_USERNAME]
-            return self.async_create_entry(
-                title=f"HGSmart ({username})",
-                data=data,
-            )
-
-        # Build schema for rooms
-        schema_dict = {}
-        for device in self.discovered_devices:
-            device_id = device["deviceId"]
-            name = device.get("name", f"Device {device_id}")
-            # Use device ID as key, AreaSelector as value
-            schema_dict[vol.Optional(device_id)] = AreaSelector(
-                AreaSelectorConfig(multiple=False)
-            )
-
-        # If no devices (shouldn't happen here), just create entry
-        if not schema_dict:
-             return self.async_create_entry(
-                title=f"HGSmart ({self.login_data[CONF_USERNAME]})",
-                data=self.login_data,
-            )
-
-        return self.async_show_form(
-            step_id="rooms",
-            data_schema=vol.Schema(schema_dict),
-            description_placeholders={"device_count": str(len(self.discovered_devices))},
         )
 
     async def async_step_reauth(
@@ -152,23 +112,7 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if await api.login():
                     devices = await api.get_devices()
                     if devices:
-                        # Compare devices with existing
-                        old_device_ids = set(
-                            self._reauth_entry.data.get(CONF_DEVICE_ROOMS, {}).keys()
-                        )
-                        new_device_ids = {d["deviceId"] for d in devices}
-
-                        # Warn if device list changed
-                        if old_device_ids != new_device_ids:
-                            missing = len(old_device_ids - new_device_ids)
-                            new = len(new_device_ids - old_device_ids)
-                            _LOGGER.warning(
-                                "Device list changed during reauth: %d removed, %d added",
-                                missing,
-                                new,
-                            )
-
-                        # Update entry with new credentials, preserve rooms
+                        # Update entry with new credentials
                         return self.async_update_reload_and_abort(
                             self._reauth_entry,
                             data_updates={
