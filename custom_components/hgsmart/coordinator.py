@@ -40,19 +40,9 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                 stats = await self.api.get_feeder_stats(device_id)
                 attributes = await self.api.get_device_attributes(device_id)
                 
-                # Parse feeding schedules
-                schedules = {}
-                if attributes:
-                    for i in range(6):  # plan0-plan5
-                        plan_key = f"plan{i}"
-                        plan_value = attributes.get(plan_key, "0")
-                        parsed = self.api.parse_plan_value(plan_value)
-                        schedules[i] = parsed
-                
                 device_data[device_id] = {
                     "device_info": device,
                     "stats": stats or {},
-                    "schedules": schedules,
                 }
 
             return device_data
