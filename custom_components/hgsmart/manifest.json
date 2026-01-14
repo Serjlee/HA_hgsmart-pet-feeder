@@ -1,11 +1,11 @@
 {
   "domain": "hgsmart",
   "name": "HGSmart Pet Feeder",
-  "codeowners": ["@yourusername"],
+  "codeowners": ["@serjlee"],
   "config_flow": true,
-  "documentation": "https://github.com/yourusername/hgsmart-homeassistant",
+  "documentation": "https://github.com/Serjlee/hacs_hgsmart-pet-feeder",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/yourusername/hgsmart-homeassistant/issues",
+  "issue_tracker": "https://github.com/Serjlee/hacs_hgsmart-pet-feeder/issues",
   "requirements": ["aiohttp>=3.8.0"],
-  "version": "1.0.1"
+  "version": "1.0.0"
 }
