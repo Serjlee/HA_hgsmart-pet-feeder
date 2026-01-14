@@ -4,6 +4,7 @@ import logging
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -72,6 +73,7 @@ class HGSmartFeedButton(CoordinatorEntity, ButtonEntity):
             _LOGGER.info("Feed command sent successfully")
         else:
             _LOGGER.error("Feed command failed")
+            raise HomeAssistantError("Failed to send feed command to device")
 
     @property
     def available(self) -> bool:
@@ -118,6 +120,7 @@ class HGSmartResetDesiccantButton(CoordinatorEntity, ButtonEntity):
             await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Desiccant reset failed")
+            raise HomeAssistantError("Failed to reset desiccant timer")
 
     @property
     def available(self) -> bool:

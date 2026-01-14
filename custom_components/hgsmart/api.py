@@ -21,6 +21,18 @@ class HGSmartApiClient:
         self.password = password
         self.access_token: str | None = None
         self.refresh_token: str | None = None
+        self._session: aiohttp.ClientSession | None = None
+
+    def _ensure_session(self) -> aiohttp.ClientSession:
+        """Ensure a session exists and return it."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def close(self) -> None:
+        """Close the aiohttp session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
 
     def _get_headers(self, use_token: bool = True) -> dict[str, str]:
         """Build standard headers for API calls."""
@@ -42,50 +54,51 @@ class HGSmartApiClient:
     ) -> dict[str, Any] | None:
         """Execute an API request with token refresh logic."""
         headers = kwargs.pop("headers", self._get_headers())
-        
+
         # Ensure authorization header is set if not present and we have a token
         if "Authorization" not in headers and self.access_token:
             headers["Authorization"] = f"Bearer {self.access_token}"
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.request(
-                    method, url, headers=headers, timeout=aiohttp.ClientTimeout(total=10), **kwargs
-                ) as response:
-                    try:
-                        data = await response.json()
-                    except aiohttp.ContentTypeError:
-                        _LOGGER.error("Failed to parse JSON response from %s", url)
-                        return None
+        session = self._ensure_session()
 
-                    if data.get("code") == 200:
-                        return data
-                    elif data.get("code") == 401:
-                        # Token expired, try refresh
-                        _LOGGER.info("Token expired, attempting refresh")
-                        if await self.refresh_access_token():
-                            # Update headers with new token
-                            headers["Authorization"] = f"Bearer {self.access_token}"
-                            # Retry request
-                            async with session.request(
-                                method, url, headers=headers, timeout=aiohttp.ClientTimeout(total=10), **kwargs
-                            ) as retry_response:
-                                try:
-                                    retry_data = await retry_response.json()
-                                    if retry_data.get("code") == 200:
-                                        return retry_data
-                                    else:
-                                        _LOGGER.error("Request failed after refresh: %s", retry_data.get("msg"))
-                                        return None
-                                except aiohttp.ContentTypeError:
-                                    _LOGGER.error("Failed to parse JSON response on retry from %s", url)
+        try:
+            async with session.request(
+                method, url, headers=headers, timeout=aiohttp.ClientTimeout(total=10), **kwargs
+            ) as response:
+                try:
+                    data = await response.json()
+                except aiohttp.ContentTypeError:
+                    _LOGGER.error("Failed to parse JSON response from %s", url)
+                    return None
+
+                if data.get("code") == 200:
+                    return data
+                elif data.get("code") == 401:
+                    # Token expired, try refresh
+                    _LOGGER.info("Token expired, attempting refresh")
+                    if await self.refresh_access_token():
+                        # Update headers with new token
+                        headers["Authorization"] = f"Bearer {self.access_token}"
+                        # Retry request
+                        async with session.request(
+                            method, url, headers=headers, timeout=aiohttp.ClientTimeout(total=10), **kwargs
+                        ) as retry_response:
+                            try:
+                                retry_data = await retry_response.json()
+                                if retry_data.get("code") == 200:
+                                    return retry_data
+                                else:
+                                    _LOGGER.error("Request failed after refresh: %s", retry_data.get("msg"))
                                     return None
-                        else:
-                            _LOGGER.error("Token refresh failed, cannot retry request")
-                            return None
+                            except aiohttp.ContentTypeError:
+                                _LOGGER.error("Failed to parse JSON response on retry from %s", url)
+                                return None
                     else:
-                        _LOGGER.error("Request failed: %s", data.get("msg"))
+                        _LOGGER.error("Token refresh failed, cannot retry request")
                         return None
+                else:
+                    _LOGGER.error("Request failed: %s", data.get("msg"))
+                    return None
 
         except Exception as e:
             _LOGGER.exception("Request error to %s: %s", url, e)
@@ -105,21 +118,22 @@ class HGSmartApiClient:
         headers = self._get_headers(use_token=False)
         headers["Authorization"] = "Bearer null"
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    data = await response.json()
+        session = self._ensure_session()
 
-                    if data.get("code") == 200:
-                        self.access_token = data["data"]["accessToken"]
-                        self.refresh_token = data["data"]["refreshToken"]
-                        _LOGGER.info("Successfully logged in to HGSmart")
-                        return True
-                    else:
-                        _LOGGER.error("Login failed: %s", data.get("msg"))
-                        return False
+        try:
+            async with session.post(
+                url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                data = await response.json()
+
+                if data.get("code") == 200:
+                    self.access_token = data["data"]["accessToken"]
+                    self.refresh_token = data["data"]["refreshToken"]
+                    _LOGGER.info("Successfully logged in to HGSmart")
+                    return True
+                else:
+                    _LOGGER.error("Login failed: %s", data.get("msg"))
+                    return False
         except Exception as e:
             _LOGGER.exception("Login error: %s", e)
             return False
@@ -134,21 +148,22 @@ class HGSmartApiClient:
 
         headers = self._get_headers()
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    data = await response.json()
+        session = self._ensure_session()
 
-                    if data.get("code") == 200:
-                        self.access_token = data["data"]["accessToken"]
-                        self.refresh_token = data["data"]["refreshToken"]
-                        _LOGGER.info("Successfully refreshed token")
-                        return True
-                    else:
-                        _LOGGER.error("Token refresh failed: %s", data.get("msg"))
-                        return False
+        try:
+            async with session.post(
+                url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                data = await response.json()
+
+                if data.get("code") == 200:
+                    self.access_token = data["data"]["accessToken"]
+                    self.refresh_token = data["data"]["refreshToken"]
+                    _LOGGER.info("Successfully refreshed token")
+                    return True
+                else:
+                    _LOGGER.error("Token refresh failed: %s", data.get("msg"))
+                    return False
         except Exception as e:
             _LOGGER.exception("Token refresh error: %s", e)
             return False
@@ -179,6 +194,11 @@ class HGSmartApiClient:
 
     async def send_feed_command(self, device_id: str, portions: int = 1) -> bool:
         """Send feed command to device."""
+        # Validate portions parameter
+        if not 1 <= portions <= 10:
+            _LOGGER.error("Invalid portions value: %d. Must be between 1 and 10", portions)
+            return False
+
         url = f"{BASE_URL}/app/device/attribute/{device_id}"
 
         # Build command payload

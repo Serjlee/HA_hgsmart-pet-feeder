@@ -5,6 +5,7 @@ from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -150,6 +151,7 @@ class HGSmartFoodRemainingNumber(CoordinatorEntity, NumberEntity):
             await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to update food remaining")
+            raise HomeAssistantError("Failed to update food remaining percentage")
 
     @property
     def available(self) -> bool:
