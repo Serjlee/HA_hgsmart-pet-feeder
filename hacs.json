@@ -1,7 +1,7 @@
 {
   "name": "HGSmart Pet Feeder",
   "render_readme": true,
-  "domains": ["sensor", "button", "binary_sensor"],
+  "domains": ["sensor", "button", "binary_sensor", "number"],
   "iot_class": "cloud_polling",
   "homeassistant": "2024.1.0"
 }
