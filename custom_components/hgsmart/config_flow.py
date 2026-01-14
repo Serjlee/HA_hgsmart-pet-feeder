@@ -33,6 +33,7 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self.login_data: dict[str, Any] | None = None
         self.discovered_devices: list[dict[str, Any]] = []
+        self._reauth_entry: config_entries.ConfigEntry | None = None
 
     @staticmethod
     def async_get_options_flow(
@@ -125,6 +126,83 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="rooms",
             data_schema=vol.Schema(schema_dict),
             description_placeholders={"device_count": str(len(self.discovered_devices))},
+        )
+
+    async def async_step_reauth(
+        self, entry_data: dict[str, Any]
+    ) -> FlowResult:
+        """Handle reauth when credentials are invalid."""
+        self._reauth_entry = self._get_reauth_entry()
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Confirm reauth and provide new credentials."""
+        errors: dict[str, str] = {}
+        description_placeholders: dict[str, str] = {}
+
+        if user_input is not None:
+            username = user_input[CONF_USERNAME]
+            password = user_input[CONF_PASSWORD]
+
+            # Test new credentials
+            api = HGSmartApiClient(username, password)
+            try:
+                if await api.login():
+                    devices = await api.get_devices()
+                    if devices:
+                        # Compare devices with existing
+                        old_device_ids = set(
+                            self._reauth_entry.data.get(CONF_DEVICE_ROOMS, {}).keys()
+                        )
+                        new_device_ids = {d["deviceId"] for d in devices}
+
+                        # Warn if device list changed
+                        if old_device_ids != new_device_ids:
+                            missing = len(old_device_ids - new_device_ids)
+                            new = len(new_device_ids - old_device_ids)
+                            _LOGGER.warning(
+                                "Device list changed during reauth: %d removed, %d added",
+                                missing,
+                                new,
+                            )
+
+                        # Update entry with new credentials, preserve rooms
+                        return self.async_update_reload_and_abort(
+                            self._reauth_entry,
+                            data_updates={
+                                CONF_USERNAME: username,
+                                CONF_PASSWORD: password,
+                            },
+                        )
+                    else:
+                        errors["base"] = "no_devices"
+                else:
+                    errors["base"] = "invalid_auth"
+            except aiohttp.ClientError:
+                _LOGGER.exception("Connection error during reauth")
+                errors["base"] = "cannot_connect"
+            except TimeoutError:
+                _LOGGER.exception("Timeout during reauth")
+                errors["base"] = "cannot_connect"
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception during reauth")
+                errors["base"] = "unknown"
+
+        # Get current username for pre-filling
+        current_username = self._reauth_entry.data.get(CONF_USERNAME, "")
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_USERNAME, default=current_username): str,
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders=description_placeholders,
         )
 
 

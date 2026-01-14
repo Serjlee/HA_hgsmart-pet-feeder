@@ -13,6 +13,14 @@
       "rooms": {
         "title": "Assign Rooms",
         "description": "Select a room for each discovered device."
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate HGSmart Account",
+        "description": "Update your HGSmart credentials",
+        "data": {
+          "username": "Username (Email)",
+          "password": "Password"
+        }
       }
     },
     "error": {
