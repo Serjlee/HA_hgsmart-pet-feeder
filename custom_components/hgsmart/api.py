@@ -196,7 +196,7 @@ class HGSmartApiClient:
             "ctrl_time": str(current_time_ms),
             "message_id": message_id,
         }
-        
+
         # Override headers because we are sending form data, not json
         headers = self._get_headers()
         # Remove Content-Type so aiohttp can set it for multipart/form-data
@@ -204,14 +204,46 @@ class HGSmartApiClient:
             del headers["Content-Type"]
 
         payload_json = json.dumps(payload_dict)
-        
+
         # Create multipart form data
         data = aiohttp.FormData()
         data.add_field('command', payload_json, content_type='application/json')
-        
+
         result = await self._request("PUT", url, headers=headers, data=data)
-        
+
         if result and result.get("code") == 200:
             _LOGGER.info("Feed command sent successfully to %s (%d portions)", device_id, portions)
+            return True
+        return False
+
+    async def reset_desiccant(self, device_id: str) -> bool:
+        """Reset desiccant expiration timer."""
+        url = f"{BASE_URL}/app/device/feeder/desiccant/{device_id}"
+        result = await self._request("PUT", url)
+
+        if result and result.get("code") == 200:
+            _LOGGER.info("Desiccant reset successfully for %s", device_id)
+            return True
+        return False
+
+    async def set_food_remaining(self, device_id: str, percentage: int) -> bool:
+        """Set food remaining percentage (0-100)."""
+        url = f"{BASE_URL}/app/device/feeder/refill"
+
+        # API uses capacity of 200, so convert percentage to that scale
+        capacity = 200
+        surplus = int((percentage / 100.0) * capacity)
+
+        payload = {
+            "deviceId": device_id,
+            "capacity": capacity,
+            "surplus": surplus,
+            "capacityModel": "",
+        }
+
+        result = await self._request("PUT", url, json=payload)
+
+        if result and result.get("code") == 200:
+            _LOGGER.info("Food remaining set to %d%% for %s", percentage, device_id)
             return True
         return False
