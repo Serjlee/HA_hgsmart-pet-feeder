@@ -72,9 +72,9 @@ class HGSmartManualFeedPortions(CoordinatorEntity, NumberEntity):
         }
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> int:
         """Return the portions value."""
-        return float(
+        return int(
             self.hass.data[DOMAIN][self.entry_id]["manual_feed_portions"].get(self.device_id, 1)
         )
 
