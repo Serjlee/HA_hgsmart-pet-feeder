@@ -1,8 +1,6 @@
 """The HGSmart Pet Feeder integration."""
 import logging
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -18,16 +16,6 @@ _LOGGER = logging.getLogger(__name__)
 # Service constants
 SERVICE_FEED = "feed"
 ATTR_PORTIONS = "portions"
-
-# Service schema - allow extra keys for target selector data
-SERVICE_FEED_SCHEMA = vol.Schema(
-    {
-        vol.Optional(ATTR_PORTIONS, default=1): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=10)
-        ),
-    },
-    extra=vol.ALLOW_EXTRA,
-)
 
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
@@ -169,7 +157,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN,
             SERVICE_FEED,
             handle_feed_service,
-            schema=SERVICE_FEED_SCHEMA,
         )
 
     return True
