@@ -42,8 +42,6 @@ def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
     - D: Slot ID (0-5)
 
     Example: "10940033" = Enabled, 09:40 UTC, 3 portions, slot 3
-
-    Returns ScheduleSlotData or None if invalid/disabled.
     """
     if not plan_value or plan_value == "0" or len(plan_value) < 8:
         return None
@@ -73,7 +71,6 @@ def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
         if status == 3:
             return None
 
-        # Portions=0 means empty schedule
         if portions == 0:
             return None
 
@@ -81,7 +78,7 @@ def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
             "enabled": status == 1,
             "hour": hour,
             "minute": minute,
-            "portions": portions if portions > 0 else 1,
+            "portions": portions,
             "slot": slot,
         }
     except (ValueError, IndexError) as e:
@@ -92,17 +89,6 @@ def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
 def build_plan_value(
     hour: int, minute: int, portions: int, slot: int, enabled: bool = True
 ) -> str:
-    """Build plan value string for API.
-
-    Format: SHHMMXPD (8 characters)
-    - S: Status (1=Enabled, 0=Disabled)
-    - HH: Hour (00-23) in UTC
-    - MM: Minute (00-59)
-    - X: Spacer (always 0)
-    - P: Portions (1-9)
-    - D: Slot ID (0-5)
-
-    Example: "10940033" = Enabled, 09:40 UTC, 3 portions, slot 3
-    """
+    """Build plan value string for API. See parse_plan_value() for format details."""
     status = 1 if enabled else 0
     return f"{status}{hour:02d}{minute:02d}0{portions}{slot}"

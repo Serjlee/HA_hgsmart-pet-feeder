@@ -83,7 +83,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                     "device_info": device,
                     "stats": stats or {},
                     "attributes": attributes or {},
-                    "schedules": schedules,  # NEW: parsed schedule data
+                    "schedules": schedules,
                 }
 
             return device_data

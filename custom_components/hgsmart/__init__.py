@@ -32,49 +32,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     username = entry.data[CONF_USERNAME]
     password = entry.data[CONF_PASSWORD]
 
-    # Initialize API client
     api = HGSmartApiClient(username, password)
 
-    # Login - raise ConfigEntryNotReady on failure so HA will retry
     if not await api.login():
         _LOGGER.error("Failed to login to HGSmart API")
         raise ConfigEntryNotReady("Failed to authenticate with HGSmart API")
 
-    # Get update interval from options (preferred) or data (fallback)
     update_interval = entry.options.get(
         CONF_UPDATE_INTERVAL,
         entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
     )
 
-    # Create data update coordinator
     coordinator = HGSmartDataUpdateCoordinator(hass, api, update_interval)
 
-    # Fetch initial data - this will raise ConfigEntryNotReady on failure
     await coordinator.async_config_entry_first_refresh()
 
-    # Store coordinator
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
         "api": api,
     }
 
-    # Register devices with clean names
     dev_reg = dr.async_get(hass)
     for device_id, device_data in coordinator.data.items():
         device_info = device_data["device_info"]
 
-        # Clean device name: remove line breaks, extra spaces, limit length
         raw_name = device_info.get("name", f"Device {device_id}")
-        clean_name = " ".join(raw_name.split())  # Remove line breaks and extra spaces
+        clean_name = " ".join(raw_name.split())
         if len(clean_name) > 50:
             clean_name = clean_name[:47] + "..."
 
-        # Clean model name
         raw_model = device_info.get("type", "Pet Feeder")
         clean_model = " ".join(raw_model.split())
 
-        # Pre-create/update device in registry
         dev_reg.async_get_or_create(
             config_entry_id=entry.entry_id,
             identifiers={(DOMAIN, device_id)},
@@ -84,24 +74,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             sw_version=device_info.get("fwVersion"),
         )
 
-    # Forward setup to platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Add update listener to reload entry when options change
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
-    # Register services
     async def handle_feed_service(call: ServiceCall) -> None:
         """Handle the feed service call."""
-        # Log the call data for debugging
         _LOGGER.info("Feed service called with full data: %s", call.data)
 
         portions = call.data.get(ATTR_PORTIONS, 1)
 
-        # Get device IDs - Home Assistant can pass them in different ways
         target_device_ids = []
 
-        # Try to get from call.data["target"]["device_id"] (new style)
         if "target" in call.data:
             target = call.data["target"]
             if "device_id" in target:
@@ -111,7 +95,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 elif isinstance(device_ids, list):
                     target_device_ids = device_ids
 
-        # Try to get from call.data["device_id"] directly (old style)
         if not target_device_ids and "device_id" in call.data:
             device_ids = call.data["device_id"]
             if isinstance(device_ids, str):
@@ -125,19 +108,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         _LOGGER.info("Feed service called for devices %s with %d portions", target_device_ids, portions)
 
-        # Get device registry
         dev_reg = dr.async_get(hass)
 
-        # Process each target device
         processed_any = False
         for ha_device_id in target_device_ids:
-            # Get device from registry
             device = dev_reg.async_get(ha_device_id)
             if not device:
                 _LOGGER.warning("Device %s not found in device registry", ha_device_id)
                 continue
 
-            # Find our device_id from the device identifiers
             our_device_id = None
             for identifier in device.identifiers:
                 if identifier[0] == DOMAIN:
@@ -152,7 +131,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
                 continue
 
-            # Find the API client for this device
             api_client = None
             for entry_id, entry_data in hass.data[DOMAIN].items():
                 if isinstance(entry_data, dict) and "coordinator" in entry_data:
@@ -164,7 +142,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if not api_client:
                 raise HomeAssistantError(f"API client not found for device {our_device_id}")
 
-            # Send feed command
             success = await api_client.send_feed_command(our_device_id, portions)
 
             if not success:
@@ -173,14 +150,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("Feed command sent successfully to %s (%d portions)", our_device_id, portions)
             processed_any = True
 
-        # Check if we processed any valid devices
         if not processed_any:
             raise HomeAssistantError(
                 "None of the selected devices are HGSmart pet feeders. "
                 "Please select a device from the HGSmart integration."
             )
 
-    # Register service only once (check if not already registered)
     if not hass.services.has_service(DOMAIN, SERVICE_FEED):
         hass.services.async_register(
             DOMAIN,

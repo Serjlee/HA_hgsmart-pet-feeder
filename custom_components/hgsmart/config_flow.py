@@ -48,22 +48,17 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             username = user_input[CONF_USERNAME]
             password = user_input[CONF_PASSWORD]
-            update_interval = user_input[CONF_UPDATE_INTERVAL]
 
-            # Test credentials
             api = HGSmartApiClient(username, password)
             
             try:
                 if await api.login():
-                    # Get devices to verify connection
                     devices = await api.get_devices()
 
                     if devices:
-                        # Create unique ID from username
                         await self.async_set_unique_id(username.lower())
                         self._abort_if_unique_id_configured()
 
-                        # Create entry directly without room assignment
                         return self.async_create_entry(
                             title=f"HGSmart ({username})",
                             data=user_input,
@@ -81,6 +76,8 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception during login")
                 errors["base"] = "unknown"
+            finally:
+                await api.close()
 
         return self.async_show_form(
             step_id="user",
@@ -100,19 +97,16 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Confirm reauth and provide new credentials."""
         errors: dict[str, str] = {}
-        description_placeholders: dict[str, str] = {}
 
         if user_input is not None:
             username = user_input[CONF_USERNAME]
             password = user_input[CONF_PASSWORD]
 
-            # Test new credentials
             api = HGSmartApiClient(username, password)
             try:
                 if await api.login():
                     devices = await api.get_devices()
                     if devices:
-                        # Update entry with new credentials
                         return self.async_update_reload_and_abort(
                             self._reauth_entry,
                             data_updates={
@@ -133,8 +127,9 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception during reauth")
                 errors["base"] = "unknown"
+            finally:
+                await api.close()
 
-        # Get current username for pre-filling
         current_username = self._reauth_entry.data.get(CONF_USERNAME, "")
 
         return self.async_show_form(
@@ -146,7 +141,6 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
-            description_placeholders=description_placeholders,
         )
 
 

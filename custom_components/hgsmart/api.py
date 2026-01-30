@@ -299,7 +299,6 @@ class HGSmartApiClient:
         Returns:
             True if successful, False otherwise
         """
-        # Import here to avoid circular imports
         from .helpers import build_plan_value
 
         url = f"{BASE_URL}/app/device/attribute/{device_id}"

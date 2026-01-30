@@ -28,7 +28,6 @@ async def async_setup_entry(
     coordinator: HGSmartDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     api = hass.data[DOMAIN][entry.entry_id]["api"]
 
-    # Initialize storage for manual feed portions (needed for button.py)
     if "manual_feed_portions" not in hass.data[DOMAIN][entry.entry_id]:
         hass.data[DOMAIN][entry.entry_id]["manual_feed_portions"] = {}
 
@@ -85,7 +84,6 @@ class HGSmartManualFeedPortions(CoordinatorEntity, RestoreEntity, NumberEntity):
         """Restore previous state when entity is added to hass."""
         await super().async_added_to_hass()
 
-        # Restore previous value if available
         if (last_state := await self.async_get_last_state()) is not None:
             if last_state.state not in (None, "unknown", "unavailable"):
                 try:
@@ -93,7 +91,6 @@ class HGSmartManualFeedPortions(CoordinatorEntity, RestoreEntity, NumberEntity):
                 except (ValueError, TypeError):
                     self._native_value = 1
 
-        # Sync with hass.data for button.py compatibility
         self.hass.data[DOMAIN][self.entry_id]["manual_feed_portions"][self.device_id] = self._native_value
 
     @property
@@ -104,7 +101,6 @@ class HGSmartManualFeedPortions(CoordinatorEntity, RestoreEntity, NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         """Set the portions value."""
         self._native_value = int(value)
-        # Sync with hass.data for button.py compatibility
         self.hass.data[DOMAIN][self.entry_id]["manual_feed_portions"][self.device_id] = self._native_value
         self.async_write_ha_state()
 
