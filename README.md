@@ -145,6 +145,11 @@ Note that the password is not stored, so you might have to re-authenticate once 
 
 As much as you can trust any random repository on the internet, I guess. I wrote it for me, and it works fine. I swear don't care about stealing your credentials and feeding your cats when you are not looking.
 
+### Is S25T the only supported model?
+
+Yes, but the API looks generic enough to work with more models with little to no changes. Let me know you'd like to help me add support for more models.
+
 ## License
 
 This integration is provided as-is for personal use. It is not affiliated with or endorsed by HoneyGuardian/HoneyGuaridan/HoneyGuaridian/HGSmart.
+
