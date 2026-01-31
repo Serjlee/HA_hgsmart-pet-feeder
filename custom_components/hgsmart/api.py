@@ -19,17 +19,26 @@ class HGSmartApiClient:
     def __init__(
         self,
         username: str,
-        password: str,
+        password: str | None = None,
+        refresh_token: str | None = None,
         locale: str = "it-IT",
         timezone: str = "Europe/Rome",
     ) -> None:
-        """Initialize the API client."""
+        """Initialize the API client.
+
+        Args:
+            username: Account username
+            password: Account password (required for initial login)
+            refresh_token: Refresh token (used instead of password if available)
+            locale: Locale string
+            timezone: Timezone string
+        """
         self.username = username
         self.password = password
         self.locale = locale
         self.timezone = timezone
         self.access_token: str | None = None
-        self.refresh_token: str | None = None
+        self.refresh_token: str | None = refresh_token
         self._session: aiohttp.ClientSession | None = None
 
     def _ensure_session(self) -> aiohttp.ClientSession:
@@ -113,8 +122,27 @@ class HGSmartApiClient:
             _LOGGER.exception("Request error to %s: %s", url, e)
             return None
 
+    async def authenticate(self) -> bool:
+        """Authenticate using refresh token if available, otherwise login with password."""
+        if self.refresh_token:
+            _LOGGER.debug("Attempting authentication with refresh token")
+            if await self.refresh_access_token():
+                return True
+            _LOGGER.warning("Refresh token authentication failed, falling back to login")
+
+        if self.password:
+            _LOGGER.debug("Attempting authentication with username/password")
+            return await self.login()
+
+        _LOGGER.error("No credentials available for authentication")
+        return False
+
     async def login(self) -> bool:
         """Login with username and password."""
+        if not self.password:
+            _LOGGER.error("Cannot login: password not provided")
+            return False
+
         url = f"{BASE_URL}/oauth/login"
         payload = {
             "account_num": self.username,

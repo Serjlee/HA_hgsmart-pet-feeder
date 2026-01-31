@@ -8,6 +8,7 @@ CLIENT_SECRET = "ss9Ytzb4gSceaPhwhKteAPLiVP4pmU8zxLEcWuscM6Vsnj7wMt"
 
 # Configuration
 CONF_UPDATE_INTERVAL = "update_interval"
+CONF_REFRESH_TOKEN = "refresh_token"
 
 # Default settings
 DEFAULT_UPDATE_INTERVAL = 15

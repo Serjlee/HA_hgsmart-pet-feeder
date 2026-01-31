@@ -2,13 +2,13 @@
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.const import CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 
 from .api import HGSmartApiClient
-from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
+from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, CONF_REFRESH_TOKEN
 from .coordinator import HGSmartDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,12 +30,15 @@ PLATFORMS: list[Platform] = [
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up HGSmart Pet Feeder from a config entry."""
     username = entry.data[CONF_USERNAME]
-    password = entry.data[CONF_PASSWORD]
+    refresh_token = entry.data.get(CONF_REFRESH_TOKEN)
 
-    api = HGSmartApiClient(username, password)
+    api = HGSmartApiClient(username, refresh_token=refresh_token)
 
-    if not await api.login():
-        _LOGGER.error("Failed to login to HGSmart API")
+    # Authenticate
+    if not await api.authenticate():
+        _LOGGER.error("Failed to authenticate with HGSmart API - refresh token may be expired")
+        # Trigger reauth flow
+        entry.async_start_reauth(hass)
         raise ConfigEntryNotReady("Failed to authenticate with HGSmart API")
 
     update_interval = entry.options.get(
