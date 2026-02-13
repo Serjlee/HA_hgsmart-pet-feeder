@@ -96,7 +96,10 @@ class HGSmartScheduleSwitch(CoordinatorEntity, SwitchEntity):
         )
 
         if success:
-            await self.coordinator.async_request_refresh()
+            # Optimistically update local state immediately
+            self.coordinator.data[self.device_id]["schedules"][self.slot]["enabled"] = enabled
+            self.async_write_ha_state()  # Immediately reflect change in UI
+            await self.coordinator.async_request_refresh()  # Sync in background
         else:
             raise HomeAssistantError(
                 f"Failed to {'enable' if enabled else 'disable'} schedule slot {self.slot}"
