@@ -119,7 +119,9 @@ class HGSmartScheduleTime(CoordinatorEntity, TimeEntity):
         )
 
         if success:
-            await self.coordinator.async_request_refresh()
+            self.coordinator.data[self.device_id]["schedules"][self.slot]["hour"] = utc_hour
+            self.coordinator.data[self.device_id]["schedules"][self.slot]["minute"] = utc_minute
+            self.async_write_ha_state()
         else:
             raise HomeAssistantError(
                 f"Failed to set schedule time for slot {self.slot}"

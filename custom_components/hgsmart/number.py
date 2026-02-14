@@ -223,7 +223,8 @@ class HGSmartSchedulePortions(CoordinatorEntity, NumberEntity):
         )
 
         if success:
-            await self.coordinator.async_request_refresh()
+            self.coordinator.data[self.device_id]["schedules"][self.slot]["portions"] = portions
+            self.async_write_ha_state()
         else:
             raise HomeAssistantError(
                 f"Failed to set portions for schedule slot {self.slot}"

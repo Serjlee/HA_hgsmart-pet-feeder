@@ -63,14 +63,6 @@ def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
             )
             return None
 
-        # Status 0 means disabled, return None (slot will use defaults)
-        if status == 0:
-            return None
-
-        # Status 3 means delete, treat as disabled
-        if status == 3:
-            return None
-
         if portions == 0:
             return None
 
