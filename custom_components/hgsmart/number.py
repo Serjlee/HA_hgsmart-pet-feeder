@@ -207,28 +207,34 @@ class HGSmartSchedulePortions(CoordinatorEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the portions value."""
-        device_data = self.coordinator.data.get(self.device_id)
-        if not device_data or not device_data.get("schedules"):
-            raise HomeAssistantError("Device data not available")
+        async with self.coordinator.get_schedule_lock(self.device_id, self.slot):
+            device_data = self.coordinator.data.get(self.device_id)
+            if not device_data or not device_data.get("schedules"):
+                raise HomeAssistantError("Device data not available")
 
-        schedule = device_data["schedules"].get(self.slot, {})
-        enabled = schedule.get("enabled", False)
-        hour = schedule.get("hour", 8)
-        minute = schedule.get("minute", 0)
+            schedule = device_data["schedules"].get(self.slot, {})
+            enabled = schedule.get("enabled", False)
+            hour = schedule.get("hour", 8)
+            minute = schedule.get("minute", 0)
+            old_portions = schedule.get("portions")
 
-        portions = int(value)
+            portions = int(value)
 
-        success = await self.api.set_schedule(
-            self.device_id, self.slot, hour, minute, portions, enabled
-        )
-
-        if success:
             self.coordinator.data[self.device_id]["schedules"][self.slot]["portions"] = portions
             self.async_write_ha_state()
-        else:
-            raise HomeAssistantError(
-                f"Failed to set portions for schedule slot {self.slot}"
-            )
+
+            try:
+                success = await self.api.set_schedule(
+                    self.device_id, self.slot, hour, minute, portions, enabled
+                )
+                if not success:
+                    raise HomeAssistantError(
+                        f"Failed to set portions for schedule slot {self.slot}"
+                    )
+            except Exception:
+                self.coordinator.data[self.device_id]["schedules"][self.slot]["portions"] = old_portions
+                self.async_write_ha_state()
+                raise
 
     @property
     def available(self) -> bool:

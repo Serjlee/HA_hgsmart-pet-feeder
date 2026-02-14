@@ -87,45 +87,54 @@ class HGSmartScheduleTime(CoordinatorEntity, TimeEntity):
 
     async def async_set_value(self, value: dt_time) -> None:
         """Set the time value (converts local to UTC for API)."""
-        device_data = self.coordinator.data.get(self.device_id)
-        if not device_data or not device_data.get("schedules"):
-            raise HomeAssistantError("Device data not available")
+        async with self.coordinator.get_schedule_lock(self.device_id, self.slot):
+            device_data = self.coordinator.data.get(self.device_id)
+            if not device_data or not device_data.get("schedules"):
+                raise HomeAssistantError("Device data not available")
 
-        schedule = device_data["schedules"].get(self.slot, {})
-        enabled = schedule.get("enabled", False)
-        portions = schedule.get("portions", 1)
+            schedule = device_data["schedules"].get(self.slot, {})
+            enabled = schedule.get("enabled", False)
+            portions = schedule.get("portions", 1)
 
-        # Convert local time to UTC
-        now = dt_util.now()
-        local_dt = now.replace(
-            hour=value.hour, minute=value.minute, second=0, microsecond=0
-        )
-        utc_dt = dt_util.as_utc(local_dt)
+            # Convert local time to UTC
+            now = dt_util.now()
+            local_dt = now.replace(
+                hour=value.hour, minute=value.minute, second=0, microsecond=0
+            )
+            utc_dt = dt_util.as_utc(local_dt)
 
-        utc_hour = utc_dt.hour
-        utc_minute = utc_dt.minute
+            utc_hour = utc_dt.hour
+            utc_minute = utc_dt.minute
 
-        _LOGGER.debug(
-            "Setting schedule %d time: local %02d:%02d -> UTC %02d:%02d",
-            self.slot,
-            value.hour,
-            value.minute,
-            utc_hour,
-            utc_minute,
-        )
+            _LOGGER.debug(
+                "Setting schedule %d time: local %02d:%02d -> UTC %02d:%02d",
+                self.slot,
+                value.hour,
+                value.minute,
+                utc_hour,
+                utc_minute,
+            )
 
-        success = await self.api.set_schedule(
-            self.device_id, self.slot, utc_hour, utc_minute, portions, enabled
-        )
+            old_hour = schedule.get("hour")
+            old_minute = schedule.get("minute")
 
-        if success:
             self.coordinator.data[self.device_id]["schedules"][self.slot]["hour"] = utc_hour
             self.coordinator.data[self.device_id]["schedules"][self.slot]["minute"] = utc_minute
             self.async_write_ha_state()
-        else:
-            raise HomeAssistantError(
-                f"Failed to set schedule time for slot {self.slot}"
-            )
+
+            try:
+                success = await self.api.set_schedule(
+                    self.device_id, self.slot, utc_hour, utc_minute, portions, enabled
+                )
+                if not success:
+                    raise HomeAssistantError(
+                        f"Failed to set schedule time for slot {self.slot}"
+                    )
+            except Exception:
+                self.coordinator.data[self.device_id]["schedules"][self.slot]["hour"] = old_hour
+                self.coordinator.data[self.device_id]["schedules"][self.slot]["minute"] = old_minute
+                self.async_write_ha_state()
+                raise
 
     @property
     def available(self) -> bool:

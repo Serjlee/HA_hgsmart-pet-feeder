@@ -1,4 +1,5 @@
 """Data update coordinator for HGSmart Pet Feeder."""
+import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
@@ -25,6 +26,14 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(minutes=update_interval),
         )
         self.api = api
+        self._schedule_locks: dict[tuple[str, int], asyncio.Lock] = {}
+
+    def get_schedule_lock(self, device_id: str, slot: int) -> asyncio.Lock:
+        """Return a per-slot lock, creating it lazily."""
+        key = (device_id, slot)
+        if key not in self._schedule_locks:
+            self._schedule_locks[key] = asyncio.Lock()
+        return self._schedule_locks[key]
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from API."""
