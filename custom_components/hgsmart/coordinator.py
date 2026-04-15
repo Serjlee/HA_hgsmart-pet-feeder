@@ -67,6 +67,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                 device_id = device["deviceId"]
                 stats = await self.api.get_feeder_stats(device_id)
                 attributes = await self.api.get_device_attributes(device_id)
+                today_events = await self.api.get_device_today_events(device_id)
 
                 # Parse schedule slots from attributes
                 schedules = {}
@@ -93,6 +94,8 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                     "stats": stats or {},
                     "attributes": attributes or {},
                     "schedules": schedules,
+                    "today_events": today_events
+                    or {"events": [], "total": 0},
                 }
 
             return device_data

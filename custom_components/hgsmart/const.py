@@ -17,3 +17,9 @@ DEFAULT_UPDATE_INTERVAL = 15
 SCHEDULE_SLOTS = 6  # Slots numbered 0-5
 MIN_PORTIONS = 1
 MAX_PORTIONS = 9
+
+# Meal call sound (device attribute identifiers: music, choosevoice)
+MEAL_CALL_OPTION_DEFAULT = "Default"
+MEAL_CALL_OPTION_CUSTOM = "Custom Recording"
+ATTR_CHOOSEVOICE = "choosevoice"
+ATTR_CHILD = "child"  # button lockout (0=off, 1=on)

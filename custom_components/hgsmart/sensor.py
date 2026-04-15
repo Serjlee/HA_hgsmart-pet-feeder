@@ -61,6 +61,10 @@ async def async_setup_entry(
             HGSmartEatingDurationSensor(coordinator, device_id, device_info, "Right", "2")
         )
 
+        entities.append(
+            HGSmartTodayEventsSensor(coordinator, device_id, device_info)
+        )
+
     async_add_entities(entities)
 
 
@@ -209,7 +213,13 @@ class HGSmartEatingTimesSensor(HGSmartSensorBase):
 
 
 class HGSmartEatingDurationSensor(HGSmartSensorBase):
-    """Sensor for eating duration."""
+    """Total eating duration (seconds) for one bowl from feeder summary.
+
+    Data comes from ``GET /app/device/feeder/summary/{deviceId}`` (API
+    ``get_feeder_stats``). The coordinator stores the response ``data`` object as
+    ``stats``; this sensor uses ``stats["eating"]``, matches ``type`` to
+    ``bowl_type`` (``"1"`` left, ``"2"`` right), and reads ``duration`` in seconds.
+    """
 
     def __init__(
         self,
@@ -230,13 +240,77 @@ class HGSmartEatingDurationSensor(HGSmartSensorBase):
 
     @property
     def native_value(self) -> int | None:
-        """Return the state of the sensor."""
+        """Return cumulative eating duration for this bowl (seconds)."""
         device_data = self.coordinator.data.get(self.device_id)
-        if device_data and device_data.get("stats"):
-            eating = device_data["stats"].get("eating")
-            if isinstance(eating, list):
-                for item in eating:
-                    if isinstance(item, dict) and item.get("type") == self.bowl_type:
-                        duration_val = item.get("duration")
-                        return int(duration_val) if duration_val is not None else None
+        if not device_data:
+            return None
+        stats = device_data.get("stats")
+        if not isinstance(stats, dict):
+            return None
+        eating = stats.get("eating")
+        if not isinstance(eating, list):
+            return None
+        for item in eating:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("type")) != str(self.bowl_type):
+                continue
+            duration_val = item.get("duration")
+            if duration_val is None:
+                return None
+            try:
+                return int(duration_val)
+            except (TypeError, ValueError):
+                return None
         return None
+
+
+class HGSmartTodayEventsSensor(HGSmartSensorBase):
+    """Sensor for today's device activity log (eating and feeding events)."""
+
+    def __init__(
+        self,
+        coordinator: HGSmartDataUpdateCoordinator,
+        device_id: str,
+        device_info: dict[str, Any],
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info)
+        self._attr_unique_id = f"{device_id}_today_events"
+        self._attr_name = f"{device_info['name']} Today's Events"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:calendar-today"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the number of events today (API total)."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if not device_data:
+            return None
+        payload = device_data.get("today_events") or {}
+        total = payload.get("total")
+        if total is not None:
+            try:
+                return int(total)
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return parsed events (newest first) and latest entry for templates."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if not device_data:
+            return {"events": []}
+        payload = device_data.get("today_events") or {}
+        events = payload.get("events")
+        if not isinstance(events, list):
+            events = []
+        attrs: dict[str, Any] = {"events": events}
+        if events:
+            first = events[0]
+            if isinstance(first, dict):
+                attrs["last_event_time"] = first.get("createTime")
+                attrs["last_event_desc"] = first.get("eventDesc")
+                attrs["last_event_code"] = first.get("event")
+        return attrs

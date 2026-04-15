@@ -10,6 +10,7 @@ from homeassistant.helpers import device_registry as dr
 from .api import HGSmartApiClient
 from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, CONF_REFRESH_TOKEN
 from .coordinator import HGSmartDataUpdateCoordinator
+from .helpers import api_locale_from_hass, api_timezone_from_hass
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.NUMBER,
+    Platform.SELECT,
     Platform.SWITCH,
     Platform.TIME,
 ]
@@ -32,7 +34,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     username = entry.data[CONF_USERNAME]
     refresh_token = entry.data.get(CONF_REFRESH_TOKEN)
 
-    api = HGSmartApiClient(username, refresh_token=refresh_token)
+    api = HGSmartApiClient(
+        username,
+        refresh_token=refresh_token,
+        locale=api_locale_from_hass(hass),
+        timezone=api_timezone_from_hass(hass),
+    )
 
     # Authenticate
     if not await api.authenticate():
