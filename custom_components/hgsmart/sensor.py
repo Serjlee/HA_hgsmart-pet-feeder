@@ -47,6 +47,20 @@ async def async_setup_entry(
             HGSmartBatteryLevelSensor(coordinator, device_id, device_info)
         )
 
+        # Add eating stats sensors for Left and Right bowls
+        entities.append(
+            HGSmartEatingTimesSensor(coordinator, device_id, device_info, "Left", "1")
+        )
+        entities.append(
+            HGSmartEatingDurationSensor(coordinator, device_id, device_info, "Left", "1")
+        )
+        entities.append(
+            HGSmartEatingTimesSensor(coordinator, device_id, device_info, "Right", "2")
+        )
+        entities.append(
+            HGSmartEatingDurationSensor(coordinator, device_id, device_info, "Right", "2")
+        )
+
     async_add_entities(entities)
 
 
@@ -158,4 +172,71 @@ class HGSmartBatteryLevelSensor(HGSmartSensorBase):
                     return int(electric)
                 except ValueError:
                     return None
+        return None
+
+
+class HGSmartEatingTimesSensor(HGSmartSensorBase):
+    """Sensor for eating times (count)."""
+
+    def __init__(
+        self,
+        coordinator: HGSmartDataUpdateCoordinator,
+        device_id: str,
+        device_info: dict[str, Any],
+        bowl_side: str,
+        bowl_type: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info)
+        self.bowl_type = bowl_type
+        self._attr_unique_id = f"{device_id}_{bowl_side.lower()}_eating_times"
+        self._attr_name = f"{device_info['name']} {bowl_side} Bowl Eating Times"
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_icon = "mdi:counter"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the state of the sensor."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if device_data and device_data.get("stats"):
+            eating = device_data["stats"].get("eating")
+            if isinstance(eating, list):
+                for item in eating:
+                    if isinstance(item, dict) and item.get("type") == self.bowl_type:
+                        time_val = item.get("time")
+                        return int(time_val) if time_val is not None else None
+        return None
+
+
+class HGSmartEatingDurationSensor(HGSmartSensorBase):
+    """Sensor for eating duration."""
+
+    def __init__(
+        self,
+        coordinator: HGSmartDataUpdateCoordinator,
+        device_id: str,
+        device_info: dict[str, Any],
+        bowl_side: str,
+        bowl_type: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info)
+        self.bowl_type = bowl_type
+        self._attr_unique_id = f"{device_id}_{bowl_side.lower()}_eating_duration"
+        self._attr_name = f"{device_info['name']} {bowl_side} Bowl Eating Duration"
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the state of the sensor."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if device_data and device_data.get("stats"):
+            eating = device_data["stats"].get("eating")
+            if isinstance(eating, list):
+                for item in eating:
+                    if isinstance(item, dict) and item.get("type") == self.bowl_type:
+                        duration_val = item.get("duration")
+                        return int(duration_val) if duration_val is not None else None
         return None
