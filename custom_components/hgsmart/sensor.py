@@ -2,7 +2,11 @@
 import logging
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
@@ -36,6 +40,11 @@ async def async_setup_entry(
         # Add desiccant expiry sensor
         entities.append(
             HGSmartDesiccantExpirySensor(coordinator, device_id, device_info)
+        )
+        
+        # Add battery level sensor
+        entities.append(
+            HGSmartBatteryLevelSensor(coordinator, device_id, device_info)
         )
 
     async_add_entities(entities)
@@ -118,4 +127,35 @@ class HGSmartDesiccantExpirySensor(HGSmartSensorBase):
             desiccant = device_data["stats"].get("desiccantExpire")
             if desiccant is not None:
                 return int(desiccant)
+        return None
+
+
+class HGSmartBatteryLevelSensor(HGSmartSensorBase):
+    """Sensor for battery level percentage."""
+
+    def __init__(
+        self,
+        coordinator: HGSmartDataUpdateCoordinator,
+        device_id: str,
+        device_info: dict[str, Any],
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info)
+        self._attr_unique_id = f"{device_id}_battery_level"
+        self._attr_name = f"{device_info['name']} Battery"
+        self._attr_device_class = SensorDeviceClass.BATTERY
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the state of the sensor."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if device_data and device_data.get("attributes"):
+            electric = device_data["attributes"].get("electric")
+            if electric is not None:
+                try:
+                    return int(electric)
+                except ValueError:
+                    return None
         return None
