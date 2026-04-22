@@ -30,8 +30,8 @@ class HGSmartApiClient:
             username: Account username
             password: Account password (required for initial login)
             refresh_token: Refresh token (used instead of password if available)
-            locale: ``Accept-Language`` value (affects API ``msg`` text; default English).
-            timezone: ``Zoneid`` header (use Home Assistant ``time_zone`` when available).
+            locale: Locale string (affects strings returned from api)
+            timezone: Timezone string (affects timestamps from api)
         """
         self.username = username
         self.password = password
@@ -220,6 +220,7 @@ class HGSmartApiClient:
 
         - ``eating``: list of ``{"type": "1"|"2", "time": int, "duration": int}``
           (bowl id, visit count, total duration in seconds for that bowl).
+          type 1 is left bowl, type 2 is right bowl
         - ``remaining``: food remaining (percentage or device-specific scale).
         - ``desiccantExpire``: desiccant days remaining (or similar).
         """
@@ -242,6 +243,8 @@ class HGSmartApiClient:
 
         Response shape: ``{"events": [...], "total": N}`` where each event has
         createTime, eventDesc, and event keys.
+
+        Requires correct timezone and locale for localized response.
         """
         url = f"{BASE_URL}/app/device/today/{device_id}"
         data = await self._request("GET", url)

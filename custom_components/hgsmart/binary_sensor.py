@@ -69,7 +69,7 @@ class HGSmartOnlineSensor(CoordinatorEntity, BinarySensorEntity):
         )
 
 class HGSmartBatterySensor(CoordinatorEntity, BinarySensorEntity):
-    """Binary sensor for device backup battery status."""
+    """Binary sensor for device backup battery present status."""
 
     def __init__(
         self,

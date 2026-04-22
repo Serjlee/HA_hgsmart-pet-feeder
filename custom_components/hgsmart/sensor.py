@@ -149,7 +149,7 @@ class HGSmartDesiccantExpirySensor(HGSmartSensorBase):
 
 
 class HGSmartBatteryLevelSensor(HGSmartSensorBase):
-    """Sensor for battery level percentage."""
+    """Sensor for backup battery level percentage."""
 
     def __init__(
         self,

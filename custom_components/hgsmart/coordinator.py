@@ -47,7 +47,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
             supported_devices = []
             for device in devices:
                 device_type = device.get("type", "")
-                if device_type == "S25D" or device_type == S30D:
+                if device_type == "S25D" or device_type == "S30D":
                     supported_devices.append(device)
                 else:
                     _LOGGER.warning(
