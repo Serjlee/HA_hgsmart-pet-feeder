@@ -17,9 +17,6 @@ from .helpers import (
     get_device_info,
     is_child_lock_active,
     read_child_lock_raw,
-    restore_child_lock_keys,
-    snapshot_child_lock_keys,
-    write_child_lock_optimistic,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -189,8 +186,11 @@ class HGSmartButtonLockoutSwitch(CoordinatorEntity, SwitchEntity):
             raise HomeAssistantError("Device data not available")
 
         new_val = "1" if locked else "0"
-        snap_attr, snap_info = snapshot_child_lock_keys(device_data)
-        write_child_lock_optimistic(device_data, new_val)
+        attrs = device_data.setdefault("attributes", {})
+        old_val = attrs.get(ATTR_CHILD)
+        
+        # Optimistically update the state
+        attrs[ATTR_CHILD] = new_val
         self.async_write_ha_state()
 
         try:
@@ -198,7 +198,11 @@ class HGSmartButtonLockoutSwitch(CoordinatorEntity, SwitchEntity):
             if not success:
                 raise HomeAssistantError("Failed to set button lockout on device")
         except Exception:
-            restore_child_lock_keys(device_data, snap_attr, snap_info)
+            # Restore previous state on failure
+            if old_val is None:
+                attrs.pop(ATTR_CHILD, None)
+            else:
+                attrs[ATTR_CHILD] = old_val
             self.async_write_ha_state()
             raise
 

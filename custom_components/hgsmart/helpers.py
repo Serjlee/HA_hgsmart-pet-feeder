@@ -124,35 +124,3 @@ def is_child_lock_active(raw: str | None) -> bool:
     return str(raw).strip() == "1"
 
 
-def snapshot_child_lock_keys(device_data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Copy current child-lock-related keys from attributes only."""
-    attrs = device_data.get("attributes") or {}
-    attr_keys = {k: attrs[k] for k in attrs if k == ATTR_CHILD}
-    # Also snapshot any *lock* key matched by find
-    for k in attrs:
-        lk = str(k).lower()
-        if "child" in lk and "lock" in lk and k not in attr_keys:
-            attr_keys[k] = attrs[k]
-    return (attr_keys, {})
-
-
-def write_child_lock_optimistic(device_data: dict[str, Any], value: str) -> None:
-    """Mirror child lock into attributes only (same key the API uses in GET)."""
-    attrs = device_data.setdefault("attributes", {})
-    attrs[ATTR_CHILD] = value
-
-
-def restore_child_lock_keys(
-    device_data: dict[str, Any],
-    attr_keys: dict[str, Any],
-) -> None:
-    """Restore attribute keys from a prior snapshot."""
-    attrs = device_data.setdefault("attributes", {})
-    for k in list(attrs.keys()):
-        if k in _CHILD_LOCK_KEYS or k == ATTR_CHILD:
-            if k not in attr_keys:
-                attrs.pop(k, None)
-        elif "child" in str(k).lower() and "lock" in str(k).lower():
-            if k not in attr_keys:
-                attrs.pop(k, None)
-    attrs.update(attr_keys)
