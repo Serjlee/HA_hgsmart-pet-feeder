@@ -11,10 +11,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import HGSmartApiClient
-from .const import DOMAIN, SCHEDULE_SLOTS
+from .const import ATTR_CHILD, DOMAIN, SCHEDULE_SLOTS
 from .coordinator import HGSmartDataUpdateCoordinator
 from .helpers import (
-    find_child_lock_attr_key,
     get_device_info,
     is_child_lock_active,
     read_child_lock_raw,
@@ -170,9 +169,8 @@ class HGSmartButtonLockoutSwitch(CoordinatorEntity, SwitchEntity):
         attrs = device_data.get("attributes")
         if not isinstance(attrs, dict):
             return {"attribute_key": None, "raw_value": None}
-        key = find_child_lock_attr_key(attrs)
         return {
-            "attribute_key": key,
+            "attribute_key": ATTR_CHILD,
             "raw_value": read_child_lock_raw(device_data),
         }
 

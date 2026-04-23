@@ -106,45 +106,12 @@ def build_plan_value(
     status = 1 if enabled else 0
     return f"{status}{hour:02d}{minute:02d}0{portions}{slot}"
 
-
-# Button lockout lives in GET /attribute payload only (ctrl identifier is still ``child``).
-_CHILD_LOCK_KEYS = (
-    "child",
-    "Child",
-    "childLock",
-    "ChildLock",
-    "childlock",
-    "child_lock",
-    "childLockOut",
-    "childlockout",
-)
-
-
-def find_child_lock_attr_key(attrs: dict[str, Any]) -> str | None:
-    """Return the attribute key used for child lock, if any."""
-    for key in _CHILD_LOCK_KEYS:
-        if key in attrs:
-            return key
-    for key in attrs:
-        lk = str(key).lower()
-        if "child" in lk and "lock" in lk:
-            return str(key)
-    return None
-
-
 def read_child_lock_raw(device_data: dict[str, Any]) -> str | None:
     """Read child lock value from the attribute payload (GET /device/attribute)."""
     attrs = device_data.get("attributes")
     if not isinstance(attrs, dict):
         return None
-    key = find_child_lock_attr_key(attrs)
-    if key is None:
-        _LOGGER.debug(
-            "Child lock: no known key in attributes (sample keys: %s)",
-            list(attrs.keys())[:25],
-        )
-        return None
-    val = attrs[key]
+    val = attrs[ATTR_CHILD]
     if val is None:
         return None
     return str(val).strip()
@@ -154,19 +121,13 @@ def is_child_lock_active(raw: str | None) -> bool:
     """Return True when API reports button lockout enabled."""
     if raw is None:
         return False
-    s = str(raw).strip().lower()
-    if s in ("1", "true", "yes", "on"):
-        return True
-    try:
-        return int(float(s)) == 1
-    except (TypeError, ValueError):
-        return False
+    return str(raw).strip() == "1"
 
 
 def snapshot_child_lock_keys(device_data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """Copy current child-lock-related keys from attributes only."""
     attrs = device_data.get("attributes") or {}
-    attr_keys = {k: attrs[k] for k in attrs if k in _CHILD_LOCK_KEYS or k == ATTR_CHILD}
+    attr_keys = {k: attrs[k] for k in attrs if k == ATTR_CHILD}
     # Also snapshot any *lock* key matched by find
     for k in attrs:
         lk = str(k).lower()
@@ -178,11 +139,7 @@ def snapshot_child_lock_keys(device_data: dict[str, Any]) -> tuple[dict[str, Any
 def write_child_lock_optimistic(device_data: dict[str, Any], value: str) -> None:
     """Mirror child lock into attributes only (same key the API uses in GET)."""
     attrs = device_data.setdefault("attributes", {})
-    key = find_child_lock_attr_key(attrs)
-    if key is not None:
-        attrs[key] = value
-    else:
-        attrs[ATTR_CHILD] = value
+    attrs[ATTR_CHILD] = value
 
 
 def restore_child_lock_keys(
