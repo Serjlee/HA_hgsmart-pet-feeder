@@ -284,18 +284,17 @@ class HGSmartTodayEventsSensor(HGSmartSensorBase):
 
     @property
     def native_value(self) -> int | None:
-        """Return the number of events today (API total)."""
+        """Return the number of events today (excluding '1_1' events)."""
         device_data = self.coordinator.data.get(self.device_id)
         if not device_data:
             return None
         payload = device_data.get("today_events") or {}
-        total = payload.get("total")
-        if total is not None:
-            try:
-                return int(total)
-            except (TypeError, ValueError):
-                return None
-        return None
+        events = payload.get("events")
+        
+        if not isinstance(events, list):
+            return None
+
+        return sum(1 for e in events if isinstance(e, dict) and e.get("event") != "1_1")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
