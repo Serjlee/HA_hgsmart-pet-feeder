@@ -18,24 +18,18 @@ from .const import (
 from .coordinator import HGSmartDataUpdateCoordinator
 from .helpers import get_device_info
 
-# Device list (`/app/device/list`) and attribute GET may use different casings.
-_CHOOSEVOICE_KEYS = ("choosevoice", "chooseVoice", "ChooseVoice")
-
-
 def _read_choosevoice_raw(device_data: dict[str, Any]) -> str | None:
     """Read meal-call voice flag from device status first, then attribute payload."""
     info = device_data.get("device_info")
     if isinstance(info, dict):
-        for key in _CHOOSEVOICE_KEYS:
-            val = info.get(key)
-            if val is not None:
-                return str(val).strip()
+        val = info.get(ATTR_CHOOSEVOICE)
+        if val is not None:
+            return str(val).strip()
     attrs = device_data.get("attributes")
     if isinstance(attrs, dict):
-        for key in _CHOOSEVOICE_KEYS:
-            val = attrs.get(key)
-            if val is not None:
-                return str(val).strip()
+        val = attrs.get(ATTR_CHOOSEVOICE)
+        if val is not None:
+            return str(val).strip()
     return None
 
 
@@ -45,21 +39,19 @@ def _write_choosevoice_optimistic(device_data: dict[str, Any], value: str) -> No
     attrs[ATTR_CHOOSEVOICE] = value
     info = device_data.setdefault("device_info", {})
     updated = False
-    for key in _CHOOSEVOICE_KEYS:
-        if key in info:
-            info[key] = value
-            updated = True
-            break
+    if ATTR_CHOOSEVOICE in info:
+        info[ATTR_CHOOSEVOICE] = value
+        updated = True
     if not updated:
-        info["choosevoice"] = value
+        info[ATTR_CHOOSEVOICE] = value
 
 
 def _snapshot_choosevoice_keys(device_data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """Copy current choosevoice-related keys from attributes and device status."""
     attrs = device_data.get("attributes") or {}
-    attr_keys = {k: attrs[k] for k in (*_CHOOSEVOICE_KEYS, ATTR_CHOOSEVOICE) if k in attrs}
+    attr_keys = {k: attrs[k] for k in attrs if k == ATTR_CHOOSEVOICE}
     info = device_data.get("device_info") or {}
-    info_keys = {k: info[k] for k in _CHOOSEVOICE_KEYS if k in info}
+    info_keys = {k: info[k] for k in attrs if k == ATTR_CHOOSEVOICE}
     return (attr_keys, info_keys)
 
 
@@ -70,15 +62,13 @@ def _restore_choosevoice_keys(
 ) -> None:
     """Restore attributes and device_info choosevoice keys to a prior snapshot."""
     attrs = device_data.setdefault("attributes", {})
-    for k in (*_CHOOSEVOICE_KEYS, ATTR_CHOOSEVOICE):
-        if k in attrs and k not in attr_keys:
-            attrs.pop(k, None)
+    if ATTR_CHOOSEVOICE in attrs and ATTR_CHOOSEVOICE not in attr_keys:
+        attrs.pop(ATTR_CHOOSEVOICE, None)
     attrs.update(attr_keys)
 
     info = device_data.setdefault("device_info", {})
-    for k in _CHOOSEVOICE_KEYS:
-        if k in info and k not in info_keys:
-            info.pop(k, None)
+    if ATTR_CHOOSEVOICE in info and ATTR_CHOOSEVOICE not in info_keys:
+        info.pop(ATTR_CHOOSEVOICE, None)
     info.update(info_keys)
 
 

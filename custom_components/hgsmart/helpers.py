@@ -145,10 +145,8 @@ def write_child_lock_optimistic(device_data: dict[str, Any], value: str) -> None
 def restore_child_lock_keys(
     device_data: dict[str, Any],
     attr_keys: dict[str, Any],
-    info_keys: dict[str, Any],
 ) -> None:
-    """Restore attribute keys from a prior snapshot (``info_keys`` unused)."""
-    del info_keys  # attributes-only; signature kept for call sites
+    """Restore attribute keys from a prior snapshot."""
     attrs = device_data.setdefault("attributes", {})
     for k in list(attrs.keys()):
         if k in _CHILD_LOCK_KEYS or k == ATTR_CHILD:

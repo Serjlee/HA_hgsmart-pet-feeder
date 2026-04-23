@@ -49,18 +49,19 @@ async def async_setup_entry(
 
         # Add eating stats sensors for Left and Right bowls
         entities.append(
-            HGSmartEatingTimesSensor(coordinator, device_id, device_info, "Left", "1")
+            HGSmartEatingCountSensor(coordinator, device_id, device_info, "Left", "1")
         )
         entities.append(
             HGSmartEatingDurationSensor(coordinator, device_id, device_info, "Left", "1")
         )
         entities.append(
-            HGSmartEatingTimesSensor(coordinator, device_id, device_info, "Right", "2")
+            HGSmartEatingCountSensor(coordinator, device_id, device_info, "Right", "2")
         )
         entities.append(
             HGSmartEatingDurationSensor(coordinator, device_id, device_info, "Right", "2")
         )
 
+        # Add today's events sensor
         entities.append(
             HGSmartTodayEventsSensor(coordinator, device_id, device_info)
         )
@@ -179,8 +180,8 @@ class HGSmartBatteryLevelSensor(HGSmartSensorBase):
         return None
 
 
-class HGSmartEatingTimesSensor(HGSmartSensorBase):
-    """Sensor for eating times (count)."""
+class HGSmartEatingCountSensor(HGSmartSensorBase):
+    """Sensor for eating count."""
 
     def __init__(
         self,
@@ -193,8 +194,8 @@ class HGSmartEatingTimesSensor(HGSmartSensorBase):
         """Initialize the sensor."""
         super().__init__(coordinator, device_id, device_info)
         self.bowl_type = bowl_type
-        self._attr_unique_id = f"{device_id}_{bowl_side.lower()}_eating_times"
-        self._attr_name = f"{device_info['name']} {bowl_side} Bowl Eating Times"
+        self._attr_unique_id = f"{device_id}_{bowl_side.lower()}_eating_count"
+        self._attr_name = f"{device_info['name']} {bowl_side} Bowl Eating Count"
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_icon = "mdi:counter"
 
