@@ -47,19 +47,34 @@ async def async_setup_entry(
             HGSmartBatteryLevelSensor(coordinator, device_id, device_info)
         )
 
-        # Add eating stats sensors for Left and Right bowls
-        entities.append(
-            HGSmartEatingCountSensor(coordinator, device_id, device_info, "Left", "1")
-        )
-        entities.append(
-            HGSmartEatingDurationSensor(coordinator, device_id, device_info, "Left", "1")
-        )
-        entities.append(
-            HGSmartEatingCountSensor(coordinator, device_id, device_info, "Right", "2")
-        )
-        entities.append(
-            HGSmartEatingDurationSensor(coordinator, device_id, device_info, "Right", "2")
-        )
+        model = str(device_info.get("type", "")).upper()
+        if model.startswith("S"):
+            model = model[1:]
+        hopper_type = model[0] if len(model) >= 1 else "1"
+        has_two_bowls = model.endswith("D")
+
+        # Add eating stats sensors based on hopper type and bowl count
+        if hopper_type != "2":
+            if has_two_bowls:
+                entities.append(
+                    HGSmartEatingCountSensor(coordinator, device_id, device_info, "Left", "1")
+                )
+                entities.append(
+                    HGSmartEatingDurationSensor(coordinator, device_id, device_info, "Left", "1")
+                )
+                entities.append(
+                    HGSmartEatingCountSensor(coordinator, device_id, device_info, "Right", "2")
+                )
+                entities.append(
+                    HGSmartEatingDurationSensor(coordinator, device_id, device_info, "Right", "2")
+                )
+            else:
+                entities.append(
+                    HGSmartEatingCountSensor(coordinator, device_id, device_info, None, "1")
+                )
+                entities.append(
+                    HGSmartEatingDurationSensor(coordinator, device_id, device_info, None, "1")
+                )
 
         # Add today's events sensor
         entities.append(
@@ -188,14 +203,18 @@ class HGSmartEatingCountSensor(HGSmartSensorBase):
         coordinator: HGSmartDataUpdateCoordinator,
         device_id: str,
         device_info: dict[str, Any],
-        bowl_side: str,
+        bowl_side: str | None,
         bowl_type: str,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, device_id, device_info)
         self.bowl_type = bowl_type
-        self._attr_unique_id = f"{device_id}_{bowl_side.lower()}_eating_count"
-        self._attr_name = f"{device_info['name']} {bowl_side} Bowl Eating Count"
+        if bowl_side:
+            self._attr_unique_id = f"{device_id}_{bowl_side.lower()}_eating_count"
+            self._attr_name = f"{device_info['name']} {bowl_side} Bowl Eating Count"
+        else:
+            self._attr_unique_id = f"{device_id}_eating_count"
+            self._attr_name = f"{device_info['name']} Eating Count"
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_icon = "mdi:counter"
 
@@ -227,14 +246,18 @@ class HGSmartEatingDurationSensor(HGSmartSensorBase):
         coordinator: HGSmartDataUpdateCoordinator,
         device_id: str,
         device_info: dict[str, Any],
-        bowl_side: str,
+        bowl_side: str | None,
         bowl_type: str,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, device_id, device_info)
         self.bowl_type = bowl_type
-        self._attr_unique_id = f"{device_id}_{bowl_side.lower()}_eating_duration"
-        self._attr_name = f"{device_info['name']} {bowl_side} Bowl Eating Duration"
+        if bowl_side:
+            self._attr_unique_id = f"{device_id}_{bowl_side.lower()}_eating_duration"
+            self._attr_name = f"{device_info['name']} {bowl_side} Bowl Eating Duration"
+        else:
+            self._attr_unique_id = f"{device_id}_eating_duration"
+            self._attr_name = f"{device_info['name']} Eating Duration"
         self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
@@ -284,7 +307,7 @@ class HGSmartTodayEventsSensor(HGSmartSensorBase):
 
     @property
     def native_value(self) -> int | None:
-        """Return the number of events today (excluding '1_1' events)."""
+        """Return the number of events today."""
         device_data = self.coordinator.data.get(self.device_id)
         if not device_data:
             return None
@@ -294,6 +317,13 @@ class HGSmartTodayEventsSensor(HGSmartSensorBase):
         if not isinstance(events, list):
             return None
 
+        model = str(self._device_info.get("type", "")).upper()
+        if model.startswith("S"):
+            model = model[1:]
+        hopper_type = model[0] if len(model) >= 1 else "1"
+
+        if hopper_type == "2":
+            return sum(1 for e in events if isinstance(e, dict) and e.get("event") == "1_1")
         return sum(1 for e in events if isinstance(e, dict) and e.get("event") != "1_1")
 
     @property
