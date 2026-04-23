@@ -111,7 +111,7 @@ def read_child_lock_raw(device_data: dict[str, Any]) -> str | None:
     attrs = device_data.get("attributes")
     if not isinstance(attrs, dict):
         return None
-    val = attrs[ATTR_CHILD]
+    val = attrs.get(ATTR_CHILD)
     if val is None:
         return None
     return str(val).strip()
