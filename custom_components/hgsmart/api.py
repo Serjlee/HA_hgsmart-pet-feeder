@@ -21,8 +21,8 @@ class HGSmartApiClient:
         username: str,
         password: str | None = None,
         refresh_token: str | None = None,
-        locale: str = "it-IT",
-        timezone: str = "Europe/Rome",
+        locale: str = "en-US",
+        timezone: str = "UTC",
     ) -> None:
         """Initialize the API client.
 
@@ -30,8 +30,8 @@ class HGSmartApiClient:
             username: Account username
             password: Account password (required for initial login)
             refresh_token: Refresh token (used instead of password if available)
-            locale: Locale string
-            timezone: Timezone string
+            locale: Locale string (affects strings returned from api)
+            timezone: Timezone string (affects timestamps from api)
         """
         self.username = username
         self.password = password
@@ -214,7 +214,16 @@ class HGSmartApiClient:
         return []
 
     async def get_feeder_stats(self, device_id: str) -> dict[str, Any] | None:
-        """Get feeder statistics (remaining food, desiccant expiration)."""
+        """GET /app/device/feeder/summary/{device_id} — feeder summary.
+
+        The ``data`` object typically includes:
+
+        - ``eating``: list of ``{"type": "1"|"2", "time": int, "duration": int}``
+          (bowl id, visit count, total duration in seconds for that bowl).
+          type 1 is left bowl, type 2 is right bowl
+        - ``remaining``: food remaining (percentage or device-specific scale).
+        - ``desiccantExpire``: desiccant days remaining (or similar).
+        """
         url = f"{BASE_URL}/app/device/feeder/summary/{device_id}"
         data = await self._request("GET", url)
         if data:
@@ -228,6 +237,83 @@ class HGSmartApiClient:
         if data:
             return data.get("data")
         return None
+
+    async def get_device_today_events(self, device_id: str) -> dict[str, Any] | None:
+        """Get today's activity log (feeding and eating events).
+
+        Response shape: ``{"events": [...], "total": N}`` where each event has
+        createTime, eventDesc, and event keys.
+
+        Requires correct timezone and locale for localized response.
+        """
+        url = f"{BASE_URL}/app/device/today/{device_id}"
+        data = await self._request("GET", url)
+        if not data:
+            return None
+        raw_events = data.get("data")
+        if not isinstance(raw_events, list):
+            raw_events = []
+        total = data.get("total")
+        if total is None:
+            total = len(raw_events)
+        return {"events": raw_events, "total": total}
+
+    async def _put_ctrl_command(
+        self, device_id: str, identifier: str, value: str
+    ) -> bool:
+        """Send one ctrl JSON blob via PUT …/attribute/{id} (multipart ``command`` field)."""
+        url = f"{BASE_URL}/app/device/attribute/{device_id}"
+        current_time_ms = int(time.time() * 1000)
+        spoofed_uuid = uuid.uuid1(node=0x8DD711617773, clock_seq=0x8697)
+        message_id = spoofed_uuid.hex
+        payload_dict = {
+            "ctrl": {"identifier": identifier, "value": value},
+            "ctrl_time": str(current_time_ms),
+            "message_id": message_id,
+        }
+        headers = self._get_headers()
+        if "Content-Type" in headers:
+            del headers["Content-Type"]
+        payload_json = json.dumps(payload_dict)
+        form = aiohttp.FormData()
+        form.add_field("command", payload_json, content_type="application/json")
+        result = await self._request("PUT", url, headers=headers, data=form)
+        return result is not None
+
+    async def set_meal_call_sound_mode(
+        self, device_id: str, custom_recording: bool
+    ) -> bool:
+        """Set meal call to built-in voice (False) or custom recording (True).
+
+        The cloud API expects two PUTs in order: ``music`` = ``0``, then
+        ``choosevoice`` = ``0`` (default) or ``1`` (custom).
+        """
+        if not await self._put_ctrl_command(device_id, "music", "0"):
+            _LOGGER.error("Meal call: failed to set music for %s", device_id)
+            return False
+        voice = "1" if custom_recording else "0"
+        if not await self._put_ctrl_command(device_id, "choosevoice", voice):
+            _LOGGER.error("Meal call: failed to set choosevoice for %s", device_id)
+            return False
+        _LOGGER.info(
+            "Meal call sound set to %s for %s",
+            "custom recording" if custom_recording else "default",
+            device_id,
+        )
+        return True
+
+    async def set_button_lockout(self, device_id: str, locked: bool) -> bool:
+        """Enable or disable physical button lockout (ctrl identifier ``child``)."""
+        val = "1" if locked else "0"
+        if not await self._put_ctrl_command(device_id, "child", val):
+            _LOGGER.error("Button lockout: failed to set child=%s for %s", val, device_id)
+            return False
+        _LOGGER.info(
+            "Button lockout set to %s for %s",
+            "on" if locked else "off",
+            device_id,
+        )
+        return True
 
     async def send_feed_command(self, device_id: str, portions: int = 1) -> bool:
         """Send feed command to device."""

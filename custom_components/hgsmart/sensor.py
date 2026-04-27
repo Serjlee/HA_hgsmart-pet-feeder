@@ -2,7 +2,11 @@
 import logging
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
@@ -36,6 +40,45 @@ async def async_setup_entry(
         # Add desiccant expiry sensor
         entities.append(
             HGSmartDesiccantExpirySensor(coordinator, device_id, device_info)
+        )
+        
+        # Add battery level sensor
+        entities.append(
+            HGSmartBatteryLevelSensor(coordinator, device_id, device_info)
+        )
+
+        model = str(device_info.get("type", "")).upper()
+        if model.startswith("S"):
+            model = model[1:]
+        hopper_type = model[0] if len(model) >= 1 else "1"
+        has_two_bowls = model.endswith("D")
+
+        # Add eating stats sensors based on hopper type and bowl count
+        if hopper_type != "2":
+            if has_two_bowls:
+                entities.append(
+                    HGSmartEatingCountSensor(coordinator, device_id, device_info, "Left", "1")
+                )
+                entities.append(
+                    HGSmartEatingDurationSensor(coordinator, device_id, device_info, "Left", "1")
+                )
+                entities.append(
+                    HGSmartEatingCountSensor(coordinator, device_id, device_info, "Right", "2")
+                )
+                entities.append(
+                    HGSmartEatingDurationSensor(coordinator, device_id, device_info, "Right", "2")
+                )
+            else:
+                entities.append(
+                    HGSmartEatingCountSensor(coordinator, device_id, device_info, None, "1")
+                )
+                entities.append(
+                    HGSmartEatingDurationSensor(coordinator, device_id, device_info, None, "1")
+                )
+
+        # Add today's events sensor
+        entities.append(
+            HGSmartTodayEventsSensor(coordinator, device_id, device_info)
         )
 
     async_add_entities(entities)
@@ -119,3 +162,185 @@ class HGSmartDesiccantExpirySensor(HGSmartSensorBase):
             if desiccant is not None:
                 return int(desiccant)
         return None
+
+
+class HGSmartBatteryLevelSensor(HGSmartSensorBase):
+    """Sensor for backup battery level percentage."""
+
+    def __init__(
+        self,
+        coordinator: HGSmartDataUpdateCoordinator,
+        device_id: str,
+        device_info: dict[str, Any],
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info)
+        self._attr_unique_id = f"{device_id}_battery_level"
+        self._attr_name = f"{device_info['name']} Battery"
+        self._attr_device_class = SensorDeviceClass.BATTERY
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the state of the sensor."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if device_data and device_data.get("attributes"):
+            electric = device_data["attributes"].get("electric")
+            if electric is not None:
+                try:
+                    return int(electric)
+                except ValueError:
+                    return None
+        return None
+
+
+class HGSmartEatingCountSensor(HGSmartSensorBase):
+    """Sensor for eating count."""
+
+    def __init__(
+        self,
+        coordinator: HGSmartDataUpdateCoordinator,
+        device_id: str,
+        device_info: dict[str, Any],
+        bowl_side: str | None,
+        bowl_type: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info)
+        self.bowl_type = bowl_type
+        if bowl_side:
+            self._attr_unique_id = f"{device_id}_{bowl_side.lower()}_eating_count"
+            self._attr_name = f"{device_info['name']} {bowl_side} Bowl Eating Count"
+        else:
+            self._attr_unique_id = f"{device_id}_eating_count"
+            self._attr_name = f"{device_info['name']} Eating Count"
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_icon = "mdi:counter"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the state of the sensor."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if device_data and device_data.get("stats"):
+            eating = device_data["stats"].get("eating")
+            if isinstance(eating, list):
+                for item in eating:
+                    if isinstance(item, dict) and item.get("type") == self.bowl_type:
+                        time_val = item.get("time")
+                        return int(time_val) if time_val is not None else None
+        return None
+
+
+class HGSmartEatingDurationSensor(HGSmartSensorBase):
+    """Total eating duration (seconds) for one bowl from feeder summary.
+
+    Data comes from ``GET /app/device/feeder/summary/{deviceId}`` (API
+    ``get_feeder_stats``). The coordinator stores the response ``data`` object as
+    ``stats``; this sensor uses ``stats["eating"]``, matches ``type`` to
+    ``bowl_type`` (``"1"`` left, ``"2"`` right), and reads ``duration`` in seconds.
+    """
+
+    def __init__(
+        self,
+        coordinator: HGSmartDataUpdateCoordinator,
+        device_id: str,
+        device_info: dict[str, Any],
+        bowl_side: str | None,
+        bowl_type: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info)
+        self.bowl_type = bowl_type
+        if bowl_side:
+            self._attr_unique_id = f"{device_id}_{bowl_side.lower()}_eating_duration"
+            self._attr_name = f"{device_info['name']} {bowl_side} Bowl Eating Duration"
+        else:
+            self._attr_unique_id = f"{device_id}_eating_duration"
+            self._attr_name = f"{device_info['name']} Eating Duration"
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def native_value(self) -> int | None:
+        """Return cumulative eating duration for this bowl (seconds)."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if not device_data:
+            return None
+        stats = device_data.get("stats")
+        if not isinstance(stats, dict):
+            return None
+        eating = stats.get("eating")
+        if not isinstance(eating, list):
+            return None
+        for item in eating:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("type")) != str(self.bowl_type):
+                continue
+            duration_val = item.get("duration")
+            if duration_val is None:
+                return None
+            try:
+                return int(duration_val)
+            except (TypeError, ValueError):
+                return None
+        return None
+
+
+class HGSmartTodayEventsSensor(HGSmartSensorBase):
+    """Sensor for today's device activity log (eating and feeding events)."""
+
+    def __init__(
+        self,
+        coordinator: HGSmartDataUpdateCoordinator,
+        device_id: str,
+        device_info: dict[str, Any],
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info)
+        self._attr_unique_id = f"{device_id}_today_events"
+        self._attr_name = f"{device_info['name']} Today's Events"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:calendar-today"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the number of events today."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if not device_data:
+            return None
+        payload = device_data.get("today_events") or {}
+        events = payload.get("events")
+        
+        if not isinstance(events, list):
+            return None
+
+        model = str(self._device_info.get("type", "")).upper()
+        if model.startswith("S"):
+            model = model[1:]
+        hopper_type = model[0] if len(model) >= 1 else "1"
+
+        if hopper_type == "2":
+            return sum(1 for e in events if isinstance(e, dict) and e.get("event") == "1_1")
+        return sum(1 for e in events if isinstance(e, dict) and e.get("event") != "1_1")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return parsed events (newest first) and latest entry for templates."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if not device_data:
+            return {"events": []}
+        payload = device_data.get("today_events") or {}
+        events = payload.get("events")
+        if not isinstance(events, list):
+            events = []
+        attrs: dict[str, Any] = {"events": events}
+        if events:
+            first = events[0]
+            if isinstance(first, dict):
+                attrs["last_event_time"] = first.get("createTime")
+                attrs["last_event_desc"] = first.get("eventDesc")
+                attrs["last_event_code"] = first.get("event")
+        return attrs

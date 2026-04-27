@@ -47,12 +47,12 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
             supported_devices = []
             for device in devices:
                 device_type = device.get("type", "")
-                if device_type == "S25D" or device_type == "S30D":
+                if device_type.startswith("S25") or device_type.startswith("S30"):
                     supported_devices.append(device)
                 else:
                     _LOGGER.warning(
                         "Skipping unsupported device model '%s' (name: %s, id: %s). "
-                        "Only S25D and S30D model is currently supported.",
+                        "Only S25/D and S30/D models are currently supported.",
                         device_type,
                         device.get("name", "Unknown"),
                         device.get("deviceId", "Unknown"),
@@ -67,6 +67,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                 device_id = device["deviceId"]
                 stats = await self.api.get_feeder_stats(device_id)
                 attributes = await self.api.get_device_attributes(device_id)
+                today_events = await self.api.get_device_today_events(device_id)
 
                 # Parse schedule slots from attributes
                 schedules = {}
@@ -93,6 +94,8 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                     "stats": stats or {},
                     "attributes": attributes or {},
                     "schedules": schedules,
+                    "today_events": today_events
+                    or {"events": [], "total": 0},
                 }
 
             return device_data

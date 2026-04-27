@@ -30,6 +30,7 @@ async def async_setup_entry(
     for device_id, device_data in coordinator.data.items():
         device_info = device_data["device_info"]
         entities.append(HGSmartOnlineSensor(coordinator, device_id, device_info))
+        entities.append(HGSmartBatterySensor(coordinator, device_id, device_info))
 
     async_add_entities(entities)
 
@@ -57,6 +58,39 @@ class HGSmartOnlineSensor(CoordinatorEntity, BinarySensorEntity):
         device_data = self.coordinator.data.get(self.device_id)
         if device_data and device_data.get("device_info"):
             return device_data["device_info"].get("online", False)
+        return False
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.device_id in self.coordinator.data
+        )
+
+class HGSmartBatterySensor(CoordinatorEntity, BinarySensorEntity):
+    """Binary sensor for device backup battery present status."""
+
+    def __init__(
+        self,
+        coordinator: HGSmartDataUpdateCoordinator,
+        device_id: str,
+        device_info: dict[str, Any],
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self.device_id = device_id
+        self._attr_unique_id = f"{device_id}_battery_backup"
+        self._attr_name = f"{device_info['name']} Battery Backup"
+        self._attr_device_class = BinarySensorDeviceClass.POWER
+        self._attr_device_info = get_device_info(device_id, device_info)
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if the device has battery backup."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if device_data and device_data.get("attributes"):
+            return device_data["attributes"].get("batstate") == "1"
         return False
 
     @property

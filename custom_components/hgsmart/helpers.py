@@ -2,9 +2,10 @@
 import logging
 from typing import Any, TypedDict
 
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN
+from .const import ATTR_CHILD, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,6 +18,18 @@ class ScheduleSlotData(TypedDict):
     minute: int
     portions: int
     slot: int
+
+
+def api_locale_from_hass(hass: HomeAssistant) -> str:
+    """Map Home Assistant language to ``Accept-Language`` for the HGSmart API."""
+    lang = hass.config.language or "en"
+    country = hass.config.country or "US"
+    return f"{lang}-{country}"
+
+
+def api_timezone_from_hass(hass: HomeAssistant) -> str:
+    """Use Home Assistant ``time_zone`` for API ``Zoneid`` header."""
+    return str(hass.config.time_zone or "UTC")
 
 
 def get_device_info(device_id: str, device_info: dict[str, Any]) -> DeviceInfo:
@@ -84,3 +97,22 @@ def build_plan_value(
     """Build plan value string for API. See parse_plan_value() for format details."""
     status = 1 if enabled else 0
     return f"{status}{hour:02d}{minute:02d}0{portions}{slot}"
+
+def read_child_lock_raw(device_data: dict[str, Any]) -> str | None:
+    """Read child lock value from the attribute payload (GET /device/attribute)."""
+    attrs = device_data.get("attributes")
+    if not isinstance(attrs, dict):
+        return None
+    val = attrs.get(ATTR_CHILD)
+    if val is None:
+        return None
+    return str(val).strip()
+
+
+def is_child_lock_active(raw: str | None) -> bool:
+    """Return True when API reports button lockout enabled."""
+    if raw is None:
+        return False
+    return str(raw).strip() == "1"
+
+
