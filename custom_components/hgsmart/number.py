@@ -236,6 +236,8 @@ class HGSmartSchedulePortions(CoordinatorEntity, NumberEntity):
                 self.async_write_ha_state()
                 raise
 
+            await self.coordinator.async_request_refresh()
+
     @property
     def available(self) -> bool:
         """Return if entity is available."""
