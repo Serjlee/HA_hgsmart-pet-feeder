@@ -91,7 +91,7 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_reauth(
-        self, entry_data: dict[str, Any]
+        self, _entry_data: dict[str, Any]
     ) -> FlowResult:
         """Handle reauth when credentials are invalid."""
         self._reauth_entry = self._get_reauth_entry()
@@ -103,8 +103,9 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Confirm reauth and provide new credentials."""
         errors: dict[str, str] = {}
 
+        username = self._reauth_entry.data[CONF_USERNAME]
+
         if user_input is not None:
-            username = user_input[CONF_USERNAME]
             password = user_input[CONF_PASSWORD]
 
             api = HGSmartApiClient(username, password)
@@ -116,7 +117,6 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         return self.async_update_reload_and_abort(
                             self._reauth_entry,
                             data_updates={
-                                CONF_USERNAME: username,
                                 CONF_REFRESH_TOKEN: api.refresh_token,
                             },
                         )
@@ -136,16 +136,14 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             finally:
                 await api.close()
 
-        current_username = self._reauth_entry.data.get(CONF_USERNAME, "")
-
         return self.async_show_form(
             step_id="reauth_confirm",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_USERNAME, default=current_username): str,
                     vol.Required(CONF_PASSWORD): str,
                 }
             ),
+            description_placeholders={"username": username},
             errors=errors,
         )
 
