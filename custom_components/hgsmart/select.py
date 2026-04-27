@@ -38,12 +38,7 @@ def _write_choosevoice_optimistic(device_data: dict[str, Any], value: str) -> No
     attrs = device_data.setdefault("attributes", {})
     attrs[ATTR_CHOOSEVOICE] = value
     info = device_data.setdefault("device_info", {})
-    updated = False
-    if ATTR_CHOOSEVOICE in info:
-        info[ATTR_CHOOSEVOICE] = value
-        updated = True
-    if not updated:
-        info[ATTR_CHOOSEVOICE] = value
+    info[ATTR_CHOOSEVOICE] = value
 
 
 def _snapshot_choosevoice_keys(device_data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
