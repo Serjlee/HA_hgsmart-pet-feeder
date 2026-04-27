@@ -1,6 +1,6 @@
 # HGSmart Pet Feeder Integration for Home Assistant
 
-A custom Home Assistant integration for Honey Guardian/Guaridan/Guaridian S25T Pet Feeder, providing a replacement for the (horrid) HGSmart app.
+A custom Home Assistant integration for Honey Guardian/Guaridan/Guaridian S30D/S25D Pet Feeder, providing a replacement for the (horrid) HGSmart app.
 
 This integration was developed through reverse engineering of the HGSmart Android application and provides access to feeding schedules, manual feeding, food level monitoring, and device status.
 
