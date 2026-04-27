@@ -164,12 +164,22 @@ class HGSmartApiClient:
             async with session.post(
                 url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
-                data = await response.json()
+                try:
+                    data = await response.json()
+                except aiohttp.ContentTypeError:
+                    _LOGGER.error("Login response was not JSON (got HTML/maintenance page?)")
+                    return False
 
                 if data.get("code") == 200:
-                    self.access_token = data["data"]["accessToken"]
-                    self.refresh_token = data["data"]["refreshToken"]
-                    _LOGGER.info("Successfully logged in to HGSmart")
+                    token_data = data.get("data") or {}
+                    access = token_data.get("accessToken")
+                    refresh = token_data.get("refreshToken")
+                    if not access or not refresh:
+                        _LOGGER.error("Login response missing tokens")
+                        return False
+                    self.access_token = access
+                    self.refresh_token = refresh
+                    _LOGGER.debug("Successfully logged in to HGSmart")
                     return True
                 else:
                     _LOGGER.error("Login failed: %s", data.get("msg"))
@@ -194,12 +204,22 @@ class HGSmartApiClient:
             async with session.post(
                 url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
-                data = await response.json()
+                try:
+                    data = await response.json()
+                except aiohttp.ContentTypeError:
+                    _LOGGER.error("Token refresh response was not JSON")
+                    return False
 
                 if data.get("code") == 200:
-                    self.access_token = data["data"]["accessToken"]
-                    self.refresh_token = data["data"]["refreshToken"]
-                    _LOGGER.info("Successfully refreshed token")
+                    token_data = data.get("data") or {}
+                    access = token_data.get("accessToken")
+                    refresh = token_data.get("refreshToken")
+                    if not access or not refresh:
+                        _LOGGER.error("Token refresh response missing tokens")
+                        return False
+                    self.access_token = access
+                    self.refresh_token = refresh
+                    _LOGGER.debug("Successfully refreshed token")
                     return True
                 else:
                     _LOGGER.error("Token refresh failed: %s", data.get("msg"))
