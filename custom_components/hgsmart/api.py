@@ -341,8 +341,11 @@ class HGSmartApiClient:
     async def send_feed_command(self, device_id: str, portions: int = 1) -> bool:
         """Send feed command to device."""
         # Validate portions parameter
-        if not 1 <= portions <= 10:
-            _LOGGER.error("Invalid portions value: %d. Must be between 1 and 10", portions)
+        if not MIN_PORTIONS <= portions <= MAX_PORTIONS:
+            _LOGGER.error(
+                "Invalid portions value: %d. Must be between %d and %d",
+                portions, MIN_PORTIONS, MAX_PORTIONS,
+            )
             return False
 
         url = f"{BASE_URL}/app/device/attribute/{device_id}"

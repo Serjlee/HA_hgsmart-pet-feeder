@@ -73,8 +73,8 @@ class HGSmartManualFeedPortions(CoordinatorEntity, RestoreEntity, NumberEntity):
         self._attr_unique_id = f"{device_id}_manual_feed_portions"
         self._attr_name = f"{device_info['name']} Manual Feed Portions"
         self._attr_icon = "mdi:food"
-        self._attr_native_min_value = 1
-        self._attr_native_max_value = 10
+        self._attr_native_min_value = MIN_PORTIONS
+        self._attr_native_max_value = MAX_PORTIONS
         self._attr_native_step = 1
         self._attr_mode = NumberMode.BOX
         self._attr_device_info = get_device_info(device_id, device_info)

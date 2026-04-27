@@ -39,7 +39,7 @@
       "fields": {
         "portions": {
           "name": "Portions",
-          "description": "Number of portions to dispense (1-10)."
+          "description": "Number of portions to dispense (1-9)."
         }
       }
     }
