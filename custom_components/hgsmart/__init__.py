@@ -4,7 +4,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 
 from .api import HGSmartApiClient
@@ -43,10 +43,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Authenticate
     if not await api.authenticate():
-        _LOGGER.error("Failed to authenticate with HGSmart API - refresh token may be expired")
-        # Trigger reauth flow
-        entry.async_start_reauth(hass)
-        raise ConfigEntryNotReady("Failed to authenticate with HGSmart API")
+        raise ConfigEntryAuthFailed("Refresh token expired or invalid, please reauthenticate")
 
     update_interval = entry.options.get(
         CONF_UPDATE_INTERVAL,

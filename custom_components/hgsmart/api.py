@@ -8,7 +8,11 @@ from typing import Any
 
 import aiohttp
 
-from .const import BASE_URL, CLIENT_ID, CLIENT_SECRET
+from .const import BASE_URL, CLIENT_ID, CLIENT_SECRET, MAX_PORTIONS, MIN_PORTIONS
+
+
+class HGSmartAuthError(Exception):
+    """Raised when authentication with the HGSmart API fails definitively."""
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -112,8 +116,7 @@ class HGSmartApiClient:
                                 _LOGGER.error("Failed to parse JSON response on retry from %s", url)
                                 return None
                     else:
-                        _LOGGER.error("Token refresh failed, cannot retry request")
-                        return None
+                        raise HGSmartAuthError("Token refresh failed; reauthentication required")
                 else:
                     _LOGGER.error("Request failed: %s", data.get("msg"))
                     return None
