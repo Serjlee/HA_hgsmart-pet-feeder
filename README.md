@@ -112,13 +112,9 @@ cards:
 
 1. Open HACS in Home Assistant
 2. Go to "Integrations"
-3. Click the three dots menu in the top right
-4. Select "Custom repositories"
-5. Add the repository URL: `https://github.com/Serjlee/hacs_hgsmart-pet-feeder`
-6. Select category: "Integration"
-7. Click "Add"
-8. Click "Install" on the HGSmart Pet Feeder card
-9. Restart Home Assistant
+3. Search for "HGSmart Pet Feeder"
+4. Click "Download"
+5. Restart Home Assistant
 
 ### Configuration
 
