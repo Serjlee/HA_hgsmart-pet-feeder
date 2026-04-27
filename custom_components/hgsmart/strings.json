@@ -16,9 +16,8 @@
       },
       "reauth_confirm": {
         "title": "Reauthenticate HGSmart Account",
-        "description": "Update your HGSmart credentials",
+        "description": "Re-enter the password for {username}",
         "data": {
-          "username": "Username (Email)",
           "password": "Password"
         }
       }

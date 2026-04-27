@@ -13,6 +13,13 @@
       "rooms": {
         "title": "Assegna Stanze",
         "description": "Seleziona una stanza per ogni dispositivo trovato."
+      },
+      "reauth_confirm": {
+        "title": "Riautentica account HGSmart",
+        "description": "Reinserisci la password per {username}",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
