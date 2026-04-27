@@ -23,16 +23,8 @@ class ScheduleSlotData(TypedDict):
 def api_locale_from_hass(hass: HomeAssistant) -> str:
     """Map Home Assistant language to ``Accept-Language`` for the HGSmart API."""
     lang = hass.config.language or "en"
-    low = lang.lower()
-    if low == "en":
-        return "en-US"
-    if low.startswith("en-"):
-        return lang.replace("_", "-")
-    if "-" in lang:
-        return lang.replace("_", "-")
-    if "_" in lang:
-        return lang.replace("_", "-")
-    return f"{lang}-{lang.upper()}"
+    country = hass.config.country or "US"
+    return f"{lang}-{country}"
 
 
 def api_timezone_from_hass(hass: HomeAssistant) -> str:
