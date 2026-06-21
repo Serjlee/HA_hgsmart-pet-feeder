@@ -276,10 +276,7 @@ class HGSmartApiClient:
         raw_events = data.get("data")
         if not isinstance(raw_events, list):
             raw_events = []
-        total = data.get("total")
-        if total is None:
-            total = len(raw_events)
-        return {"events": raw_events, "total": total}
+        return {"events": raw_events, "total": len(raw_events)}
 
     async def _put_ctrl_command(
         self, device_id: str, identifier: str, value: str
