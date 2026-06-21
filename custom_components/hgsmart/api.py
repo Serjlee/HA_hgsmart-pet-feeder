@@ -8,7 +8,11 @@ from typing import Any
 
 import aiohttp
 
-from .const import BASE_URL, CLIENT_ID, CLIENT_SECRET
+from .const import BASE_URL, CLIENT_ID, CLIENT_SECRET, MAX_PORTIONS, MIN_PORTIONS
+
+
+class HGSmartAuthError(Exception):
+    """Raised when authentication with the HGSmart API fails definitively."""
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -112,8 +116,7 @@ class HGSmartApiClient:
                                 _LOGGER.error("Failed to parse JSON response on retry from %s", url)
                                 return None
                     else:
-                        _LOGGER.error("Token refresh failed, cannot retry request")
-                        return None
+                        raise HGSmartAuthError("Token refresh failed; reauthentication required")
                 else:
                     _LOGGER.error("Request failed: %s", data.get("msg"))
                     return None
@@ -161,12 +164,22 @@ class HGSmartApiClient:
             async with session.post(
                 url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
-                data = await response.json()
+                try:
+                    data = await response.json()
+                except aiohttp.ContentTypeError:
+                    _LOGGER.error("Login response was not JSON (got HTML/maintenance page?)")
+                    return False
 
                 if data.get("code") == 200:
-                    self.access_token = data["data"]["accessToken"]
-                    self.refresh_token = data["data"]["refreshToken"]
-                    _LOGGER.info("Successfully logged in to HGSmart")
+                    token_data = data.get("data") or {}
+                    access = token_data.get("accessToken")
+                    refresh = token_data.get("refreshToken")
+                    if not access or not refresh:
+                        _LOGGER.error("Login response missing tokens")
+                        return False
+                    self.access_token = access
+                    self.refresh_token = refresh
+                    _LOGGER.debug("Successfully logged in to HGSmart")
                     return True
                 else:
                     _LOGGER.error("Login failed: %s", data.get("msg"))
@@ -191,12 +204,22 @@ class HGSmartApiClient:
             async with session.post(
                 url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
-                data = await response.json()
+                try:
+                    data = await response.json()
+                except aiohttp.ContentTypeError:
+                    _LOGGER.error("Token refresh response was not JSON")
+                    return False
 
                 if data.get("code") == 200:
-                    self.access_token = data["data"]["accessToken"]
-                    self.refresh_token = data["data"]["refreshToken"]
-                    _LOGGER.info("Successfully refreshed token")
+                    token_data = data.get("data") or {}
+                    access = token_data.get("accessToken")
+                    refresh = token_data.get("refreshToken")
+                    if not access or not refresh:
+                        _LOGGER.error("Token refresh response missing tokens")
+                        return False
+                    self.access_token = access
+                    self.refresh_token = refresh
+                    _LOGGER.debug("Successfully refreshed token")
                     return True
                 else:
                     _LOGGER.error("Token refresh failed: %s", data.get("msg"))
@@ -253,10 +276,7 @@ class HGSmartApiClient:
         raw_events = data.get("data")
         if not isinstance(raw_events, list):
             raw_events = []
-        total = data.get("total")
-        if total is None:
-            total = len(raw_events)
-        return {"events": raw_events, "total": total}
+        return {"events": raw_events, "total": len(raw_events)}
 
     async def _put_ctrl_command(
         self, device_id: str, identifier: str, value: str
@@ -318,8 +338,11 @@ class HGSmartApiClient:
     async def send_feed_command(self, device_id: str, portions: int = 1) -> bool:
         """Send feed command to device."""
         # Validate portions parameter
-        if not 1 <= portions <= 10:
-            _LOGGER.error("Invalid portions value: %d. Must be between 1 and 10", portions)
+        if not MIN_PORTIONS <= portions <= MAX_PORTIONS:
+            _LOGGER.error(
+                "Invalid portions value: %d. Must be between %d and %d",
+                portions, MIN_PORTIONS, MAX_PORTIONS,
+            )
             return False
 
         url = f"{BASE_URL}/app/device/attribute/{device_id}"

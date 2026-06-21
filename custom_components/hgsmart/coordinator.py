@@ -5,9 +5,10 @@ import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import HGSmartApiClient
+from .api import HGSmartApiClient, HGSmartAuthError
 from .const import DOMAIN, SCHEDULE_SLOTS
 from .helpers import parse_plan_value
 
@@ -100,6 +101,9 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
 
             return device_data
 
+        except HGSmartAuthError as err:
+            raise ConfigEntryAuthFailed("Authentication failed, please reauthenticate") from err
+        except UpdateFailed:
+            raise
         except Exception as err:
-            _LOGGER.exception("Error fetching data: %s", err)
             raise UpdateFailed(f"Error communicating with API: {err}") from err

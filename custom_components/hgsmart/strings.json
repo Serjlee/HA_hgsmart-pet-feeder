@@ -16,9 +16,8 @@
       },
       "reauth_confirm": {
         "title": "Reauthenticate HGSmart Account",
-        "description": "Update your HGSmart credentials",
+        "description": "Re-enter the password for {username}",
         "data": {
-          "username": "Username (Email)",
           "password": "Password"
         }
       }
@@ -40,7 +39,7 @@
       "fields": {
         "portions": {
           "name": "Portions",
-          "description": "Number of portions to dispense (1-10)."
+          "description": "Number of portions to dispense (1-9)."
         }
       }
     }

@@ -13,6 +13,13 @@
       "rooms": {
         "title": "Assegna Stanze",
         "description": "Seleziona una stanza per ogni dispositivo trovato."
+      },
+      "reauth_confirm": {
+        "title": "Riautentica account HGSmart",
+        "description": "Reinserisci la password per {username}",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -32,7 +39,7 @@
       "fields": {
         "portions": {
           "name": "Porzioni",
-          "description": "Numero di porzioni da erogare (1-10)."
+          "description": "Numero di porzioni da erogare (1-9)."
         }
       }
     }
