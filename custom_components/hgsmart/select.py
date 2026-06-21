@@ -46,7 +46,7 @@ def _snapshot_choosevoice_keys(device_data: dict[str, Any]) -> tuple[dict[str, A
     attrs = device_data.get("attributes") or {}
     attr_keys = {k: attrs[k] for k in attrs if k == ATTR_CHOOSEVOICE}
     info = device_data.get("device_info") or {}
-    info_keys = {k: info[k] for k in attrs if k == ATTR_CHOOSEVOICE}
+    info_keys = {k: info[k] for k in info if k == ATTR_CHOOSEVOICE}
     return (attr_keys, info_keys)
 
 
