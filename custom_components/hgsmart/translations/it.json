@@ -42,6 +42,34 @@
           "description": "Numero di porzioni da erogare (1-9)."
         }
       }
+    },
+    "upload_sound": {
+      "name": "Carica suono del pasto",
+      "description": "Converte un file audio e lo installa come suono personalizzato del pasto.",
+      "fields": {
+        "media": {
+          "name": "File audio",
+          "description": "Audio da una sorgente multimediale di Home Assistant."
+        },
+        "volume": {
+          "name": "Volume",
+          "description": "Percentuale del volume sorgente; 100% mantiene il livello originale."
+        },
+        "host": {
+          "name": "Host",
+          "description": "Indirizzo IP locale opzionale o host:porta; la porta predefinita è 3333."
+        }
+      }
+    },
+    "mute_meal_call": {
+      "name": "Disattiva il suono del pasto",
+      "description": "Installa il suono valido più breve a volume zero per mantenere silenziosi i pasti programmati.",
+      "fields": {
+        "host": {
+          "name": "Host",
+          "description": "Indirizzo IP locale opzionale o host:porta; la porta predefinita è 3333."
+        }
+      }
     }
   }
 }

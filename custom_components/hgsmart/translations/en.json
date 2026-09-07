@@ -42,6 +42,34 @@
           "description": "Number of portions to dispense (1-9)."
         }
       }
+    },
+    "upload_sound": {
+      "name": "Upload meal-call sound",
+      "description": "Convert an audio file and install it as the feeder's custom meal-call sound.",
+      "fields": {
+        "media": {
+          "name": "Audio file",
+          "description": "Audio from a Home Assistant media source."
+        },
+        "volume": {
+          "name": "Volume",
+          "description": "Source volume percentage; 100% preserves the original level."
+        },
+        "host": {
+          "name": "Host",
+          "description": "Optional local feeder IP address or host:port; port 3333 is used by default."
+        }
+      }
+    },
+    "mute_meal_call": {
+      "name": "Disable meal-call sound",
+      "description": "Install the shortest valid zero-volume sound so scheduled meals remain silent.",
+      "fields": {
+        "host": {
+          "name": "Host",
+          "description": "Optional local feeder IP address or host:port; port 3333 is used by default."
+        }
+      }
     }
   }
 }

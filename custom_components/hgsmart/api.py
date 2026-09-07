@@ -322,6 +322,81 @@ class HGSmartApiClient:
         )
         return True
 
+    async def upload_voice_file(
+        self, audio: bytes, filename: str = "custom_voice.wav"
+    ) -> str | None:
+        """Upload a feeder-compatible WAV and return its platform URL."""
+        url = f"{BASE_URL}/app/device/uploadVoiceFile"
+
+        async def _upload_once() -> dict[str, Any] | None:
+            headers = self._get_headers()
+            headers.pop("Content-Type", None)
+            form = aiohttp.FormData()
+            form.add_field(
+                "voiceFile",
+                audio,
+                filename=filename,
+                content_type="audio/wav",
+            )
+            session = self._ensure_session()
+            async with session.post(
+                url,
+                headers=headers,
+                data=form,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as response:
+                try:
+                    return await response.json()
+                except aiohttp.ContentTypeError:
+                    _LOGGER.error("Voice upload response was not JSON")
+                    return None
+
+        try:
+            data = await _upload_once()
+            if data and data.get("code") == 401:
+                _LOGGER.info("Token expired during voice upload, attempting refresh")
+                if not await self.refresh_access_token():
+                    raise HGSmartAuthError(
+                        "Token refresh failed; reauthentication required"
+                    )
+                data = await _upload_once()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            _LOGGER.exception("Voice upload request failed: %s", err)
+            return None
+
+        if not data or data.get("code") != 200:
+            _LOGGER.error(
+                "Voice upload failed: %s", data.get("msg") if data else "no response"
+            )
+            return None
+
+        result = data.get("data")
+        if isinstance(result, str) and result:
+            return result
+        if isinstance(result, dict):
+            for key in ("url", "fileUrl", "voiceUrl"):
+                value = result.get(key)
+                if isinstance(value, str) and value:
+                    return value
+        _LOGGER.error("Voice upload response did not contain a URL")
+        return None
+
+    async def set_custom_voice_url(self, device_id: str, url: str) -> bool:
+        """Tell the feeder cloud channel where the uploaded custom voice lives."""
+        return await self._put_ctrl_command(device_id, "getmusic", url)
+
+    async def prepare_custom_voice_transfer(self, device_id: str) -> bool:
+        """Open the feeder's temporary local voice-transfer listener."""
+        return await self._put_ctrl_command(device_id, "music", "1")
+
+    async def finish_custom_voice_transfer(self, device_id: str) -> bool:
+        """Close the feeder's temporary local voice-transfer listener."""
+        return await self._put_ctrl_command(device_id, "music", "0")
+
+    async def activate_custom_voice(self, device_id: str) -> bool:
+        """Select the newly transferred custom voice."""
+        return await self._put_ctrl_command(device_id, "choosevoice", "1")
+
     async def set_button_lockout(self, device_id: str, locked: bool) -> bool:
         """Enable or disable physical button lockout (ctrl identifier ``child``)."""
         val = "1" if locked else "0"
