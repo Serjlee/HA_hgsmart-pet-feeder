@@ -22,3 +22,69 @@ feed:
           max: 9
           step: 1
           mode: slider
+
+upload_sound:
+  name: Upload meal-call sound
+  description: >-
+    Convert an audio file and install it as the feeder's custom meal-call sound.
+    Home Assistant and the feeder must be on the same local network.
+  fields:
+    device_id:
+      name: Device
+      description: The pet feeder that will receive the sound
+      required: true
+      selector:
+        device:
+          integration: hgsmart
+    media:
+      name: Audio file
+      description: Audio from a Home Assistant media source
+      required: true
+      selector:
+        media:
+          accept:
+            - audio/*
+    volume:
+      name: Volume
+      description: Source volume percentage; 100% preserves the original level
+      required: false
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 200
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    host:
+      name: Host
+      description: >-
+        Optional local feeder IP address or host:port. Only needed when HGSmart
+        does not publish the feeder's local address. The default port is 3333.
+      required: false
+      example: 192.168.1.42
+      selector:
+        text:
+
+mute_meal_call:
+  name: Disable meal-call sound
+  description: >-
+    Install the shortest valid zero-volume sound so scheduled meals remain
+    silent. Home Assistant and the feeder must be on the same local network.
+  fields:
+    device_id:
+      name: Device
+      description: The pet feeder whose meal-call sound will be silenced
+      required: true
+      selector:
+        device:
+          integration: hgsmart
+    host:
+      name: Host
+      description: >-
+        Optional local feeder IP address or host:port. Only needed when HGSmart
+        does not publish the feeder's local address. The default port is 3333.
+      required: false
+      example: 192.168.1.42
+      selector:
+        text:
