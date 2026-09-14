@@ -16,7 +16,7 @@ from .const import (
     MEAL_CALL_OPTION_DEFAULT,
 )
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import get_device_info
+from .helpers import get_device_info, is_fountain
 
 def _read_choosevoice_raw(device_data: dict[str, Any]) -> str | None:
     """Read meal-call voice flag from device status first, then attribute payload."""
@@ -81,6 +81,8 @@ async def async_setup_entry(
     entities = []
     for device_id, device_data in coordinator.data.items():
         device_info = device_data["device_info"]
+        if is_fountain(device_info):
+            continue
         entities.append(
             HGSmartMealCallSoundSelect(coordinator, api, device_id, device_info)
         )

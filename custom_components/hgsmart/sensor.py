@@ -15,7 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import get_device_info
+from .helpers import get_device_info, is_fountain
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,20 +31,28 @@ async def async_setup_entry(
     entities = []
     for device_id, device_data in coordinator.data.items():
         device_info = device_data["device_info"]
-        
+
+        # Add battery level sensor
+        entities.append(
+            HGSmartBatteryLevelSensor(coordinator, device_id, device_info)
+        )
+
+        # Add today's events sensor
+        entities.append(
+            HGSmartTodayEventsSensor(coordinator, device_id, device_info)
+        )
+
+        if is_fountain(device_info):
+            continue
+
         # Add food remaining sensor
         entities.append(
             HGSmartFoodRemainingSensor(coordinator, device_id, device_info)
         )
-        
+
         # Add desiccant expiry sensor
         entities.append(
             HGSmartDesiccantExpirySensor(coordinator, device_id, device_info)
-        )
-        
-        # Add battery level sensor
-        entities.append(
-            HGSmartBatteryLevelSensor(coordinator, device_id, device_info)
         )
 
         model = str(device_info.get("type", "")).upper()
@@ -75,11 +83,6 @@ async def async_setup_entry(
                 entities.append(
                     HGSmartEatingDurationSensor(coordinator, device_id, device_info, None, "1")
                 )
-
-        # Add today's events sensor
-        entities.append(
-            HGSmartTodayEventsSensor(coordinator, device_id, device_info)
-        )
 
     async_add_entities(entities)
 

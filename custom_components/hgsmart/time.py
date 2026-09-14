@@ -14,7 +14,7 @@ from homeassistant.util import dt as dt_util
 from .api import HGSmartApiClient
 from .const import DOMAIN, SCHEDULE_SLOTS
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import get_device_info
+from .helpers import get_device_info, is_fountain
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,6 +33,8 @@ async def async_setup_entry(
     entities = []
     for device_id, device_data in coordinator.data.items():
         device_info = device_data["device_info"]
+        if is_fountain(device_info):
+            continue
 
         # Add schedule time entities for each slot
         for slot in range(SCHEDULE_SLOTS):
