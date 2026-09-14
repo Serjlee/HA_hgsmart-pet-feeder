@@ -33,7 +33,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import api_locale_from_hass, api_timezone_from_hass
+from .helpers import api_locale_from_hass, api_timezone_from_hass, is_fountain
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,7 +76,10 @@ def _service_device_ids(call: ServiceCall) -> list[str]:
 def _find_device_client(
     hass: HomeAssistant, ha_device_id: str
 ) -> tuple[str, HGSmartApiClient, HGSmartDataUpdateCoordinator, dict[str, Any]] | None:
-    """Map a Home Assistant device ID to HGSmart runtime objects."""
+    """Map a Home Assistant device ID to HGSmart feeder runtime objects.
+
+    Returns None for fountains, since every service here is feeder-only.
+    """
     device = dr.async_get(hass).async_get(ha_device_id)
     if not device:
         return None
@@ -91,6 +94,8 @@ def _find_device_client(
             continue
         coordinator = entry_data["coordinator"]
         if cloud_device_id in coordinator.data:
+            if is_fountain(coordinator.data[cloud_device_id]["device_info"]):
+                return None
             return (
                 cloud_device_id,
                 entry_data["api"],
