@@ -22,6 +22,9 @@ AUDIO_TCP_PORT = 3_333
 AUDIO_CHUNK_SIZE = 4_096
 AUDIO_CHUNK_DELAY = 0.05
 AUDIO_CONNECT_TIMEOUT = 20.0
+AUDIO_CONNECT_ATTEMPT_TIMEOUT = 2.0
+AUDIO_CONNECT_RETRY_DELAY = 0.2
+AUDIO_REOPEN_INTERVAL = 4.0
 AUDIO_RESPONSE_TIMEOUT = 20.0
 AUDIO_TRANSFER_END_MARKER = b"DSY-AUDIO"
 AUDIO_TRANSFER_ACK = "完成接收".encode()
@@ -248,6 +251,41 @@ def parse_endpoint(value: str, default_port: int = AUDIO_TCP_PORT) -> tuple[str,
     return host, port
 
 
+async def _async_connect(
+    host: str,
+    port: int,
+    connect_timeout: float,
+    reopen_transfer: Callable[[], Awaitable[bool]] | None,
+    reopen_interval: float,
+) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    """Connect to the feeder's temporary listener, retrying until it opens.
+
+    An S25D was observed opening its listener a few seconds after ``music=1``
+    and only for a short window, so refused connections are retried and
+    transfer mode is re-requested periodically until the deadline.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + connect_timeout
+    last_reopen = loop.time()
+    while True:
+        attempt_timeout = min(
+            AUDIO_CONNECT_ATTEMPT_TIMEOUT, max(deadline - loop.time(), 0.1)
+        )
+        try:
+            return await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=attempt_timeout
+            )
+        except (OSError, TimeoutError) as err:
+            if loop.time() >= deadline:
+                raise HGSmartAudioError(
+                    f"Could not connect to feeder at {host}:{port}"
+                ) from err
+        if reopen_transfer is not None and loop.time() - last_reopen >= reopen_interval:
+            await reopen_transfer()
+            last_reopen = loop.time()
+        await asyncio.sleep(AUDIO_CONNECT_RETRY_DELAY)
+
+
 async def async_send_audio(
     endpoint: str,
     audio: bytes,
@@ -256,6 +294,8 @@ async def async_send_audio(
     response_timeout: float = AUDIO_RESPONSE_TIMEOUT,
     chunk_size: int = AUDIO_CHUNK_SIZE,
     chunk_delay: float = AUDIO_CHUNK_DELAY,
+    reopen_transfer: Callable[[], Awaitable[bool]] | None = None,
+    reopen_interval: float = AUDIO_REOPEN_INTERVAL,
     finalize_transfer: Callable[[], Awaitable[bool]] | None = None,
 ) -> None:
     """Send a framed WAV and wait for the feeder's completion response."""
@@ -267,14 +307,9 @@ async def async_send_audio(
     finalized = True
     writer: asyncio.StreamWriter | None = None
     try:
-        try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(host, port), timeout=connect_timeout
-            )
-        except (OSError, TimeoutError) as err:
-            raise HGSmartAudioError(
-                f"Could not connect to feeder at {host}:{port}"
-            ) from err
+        reader, writer = await _async_connect(
+            host, port, connect_timeout, reopen_transfer, reopen_interval
+        )
 
         for offset in range(0, len(payload), chunk_size):
             writer.write(payload[offset : offset + chunk_size])

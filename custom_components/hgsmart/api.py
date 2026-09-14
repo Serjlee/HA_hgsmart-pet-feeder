@@ -323,7 +323,7 @@ class HGSmartApiClient:
         return True
 
     async def upload_voice_file(
-        self, audio: bytes, filename: str = "custom_voice.wav"
+        self, device_id: str, audio: bytes, filename: str = "custom_voice.wav"
     ) -> str | None:
         """Upload a feeder-compatible WAV and return its platform URL."""
         url = f"{BASE_URL}/app/device/uploadVoiceFile"
@@ -332,6 +332,8 @@ class HGSmartApiClient:
             headers = self._get_headers()
             headers.pop("Content-Type", None)
             form = aiohttp.FormData()
+            # The official app sends the target device alongside the file.
+            form.add_field("deviceId", device_id)
             form.add_field(
                 "voiceFile",
                 audio,

@@ -32,13 +32,17 @@ The Flutter AOT snapshot was inspected with
    limiter to avoid digital clipping.
 
 2. Send `POST /app/device/uploadVoiceFile` as multipart form data. The file
-   field is named `voiceFile`. A successful response contains the platform URL.
+   field is named `voiceFile`; the app also sends the target `deviceId` as a
+   plain form field. A successful response contains the platform URL.
 3. Send the URL through the normal device control channel with identifier
    `getmusic`.
 4. Send `music=1` and wait 500 ms. This makes the feeder open its temporary
    local listener.
 5. Connect to the feeder's local endpoint. The app defaults to TCP port 3333
-   when no port is supplied.
+   when no port is supplied. An S25D was observed opening the listener only a
+   few seconds after `music=1`, and briefly, so the integration retries refused
+   connections for up to 20 seconds and re-sends `music=1` every 4 seconds
+   while it waits.
 6. Append the UTF-8 bytes `DSY-AUDIO` to the complete WAV byte sequence, split
    that framed payload into 4,096-byte chunks, and write them in order. The app
    pauses 50 ms after every chunk.
@@ -72,6 +76,9 @@ discovery message. The current integration locates the TCP endpoint as follows:
    `audioHost`, or `audioAddress`) in the device and attribute responses; then
 2. uses the optional `host` action field when the firmware does not expose one.
 
+An S25D publishes the endpoint as `ip` in the `/app/device/attribute`
+response, already including the port (for example `"ip":"192.168.1.42:3333"`).
+
 The action must run while Home Assistant and the feeder are reachable on the
 same LAN. `host` accepts an address with an optional port, such as
 `192.168.1.42` or `192.168.1.42:3333`.
@@ -90,6 +97,12 @@ hardware capture proves that it is not the format sent by this S30D workflow.
 The earlier implementation incorrectly associated that command with meal-call
 uploads. Separately, omitting the `DSY-AUDIO` terminator can leave the feeder
 waiting in transfer mode.
+
+A separate S25D experiment found a third FFmpeg recipe in `libapp.so`:
+`-ar 16000 -ab 32000 -ac 1 -acodec pcm_u8` (PCM 8-bit unsigned, 16 kHz). That
+experiment sent the WAV without the `DSY-AUDIO` terminator, so it neither
+confirms nor rules out this format. If an S25-series feeder acknowledges the
+22050 Hz 16-bit payload but does not play it, this recipe is the next candidate.
 
 Automated tests cover WAV validation, endpoint parsing, FFmpeg command
 construction, transfer-mode controls, exact framed TCP transfer, and mandatory

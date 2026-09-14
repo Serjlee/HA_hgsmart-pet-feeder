@@ -299,7 +299,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             locks = entry_data.setdefault("voice_upload_locks", {})
             lock = locks.setdefault(cloud_device_id, asyncio.Lock())
             async with lock:
-                voice_url = await api_client.upload_voice_file(audio)
+                voice_url = await api_client.upload_voice_file(
+                    cloud_device_id, audio
+                )
                 if not voice_url:
                     raise HomeAssistantError(
                         f"HGSmart rejected the sound for device {cloud_device_id}"
@@ -322,11 +324,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     )
 
                 # The official app gives the feeder half a second to open its
-                # temporary TCP listener.
+                # temporary TCP listener; slower firmware is retried.
                 await asyncio.sleep(0.5)
                 await async_send_audio(
                     endpoint,
                     audio,
+                    reopen_transfer=partial(
+                        api_client.prepare_custom_voice_transfer,
+                        cloud_device_id,
+                    ),
                     finalize_transfer=partial(
                         api_client.finish_custom_voice_transfer,
                         cloud_device_id,

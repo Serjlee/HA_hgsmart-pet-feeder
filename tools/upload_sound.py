@@ -230,7 +230,7 @@ async def _run(args: argparse.Namespace) -> None:
                 f"volume={displayed_volume:g}%"
             )
 
-            voice_url = await client.upload_voice_file(audio)
+            voice_url = await client.upload_voice_file(device_id, audio)
             if not voice_url:
                 raise RuntimeError("HGSmart rejected the cloud upload")
             print("cloud_upload=ok")
@@ -239,10 +239,10 @@ async def _run(args: argparse.Namespace) -> None:
                 raise RuntimeError("Could not send the custom-sound URL")
             print("getmusic=ok")
 
-            transfer_prepared = await client.prepare_custom_voice_transfer(device_id)
-            if not transfer_prepared:
-                # The command may have reached the feeder even if its response was
-                # lost. The outer finally block always sends music=0.
+            # The command may reach the feeder even if its response is lost, so
+            # the outer finally block sends music=0 whenever this was attempted.
+            transfer_prepared = True
+            if not await client.prepare_custom_voice_transfer(device_id):
                 raise RuntimeError("Could not open the feeder transfer listener")
             print("transfer_prepare=ok")
 
@@ -250,6 +250,10 @@ async def _run(args: argparse.Namespace) -> None:
             await audio_module.async_send_audio(
                 endpoint,
                 audio,
+                reopen_transfer=partial(
+                    client.prepare_custom_voice_transfer,
+                    device_id,
+                ),
                 finalize_transfer=partial(
                     client.finish_custom_voice_transfer,
                     device_id,

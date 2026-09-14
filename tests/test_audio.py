@@ -74,6 +74,16 @@ class AudioFormatTests(unittest.TestCase):
         }
         self.assertEqual(audio.find_local_endpoint(device_data), "192.168.1.42:3333")
 
+    def test_finds_s25d_attribute_ip(self) -> None:
+        # Shape of a captured S25D /app/device/attribute response.
+        device_data = {
+            "device_info": {"type": "S25D", "mac": "32:34:3A:34:32:3A"},
+            "attributes": {"music": "0", "ip": "192.168.14.189:3333"},
+        }
+        self.assertEqual(
+            audio.find_local_endpoint(device_data), "192.168.14.189:3333"
+        )
+
     def test_ffmpeg_command_matches_captured_s30d_format(self) -> None:
         command = audio.build_ffmpeg_command("ffmpeg", "input.mp3", Path("out.wav"))
         self.assertEqual(
@@ -197,6 +207,55 @@ class AudioTransferTests(unittest.IsolatedAsyncioTestCase):
             server.close()
             await server.wait_closed()
 
+        finalize_transfer.assert_awaited_once_with()
+
+    async def test_retries_until_listener_opens(self) -> None:
+        expected = pcm_wav()
+        expected_payload = expected + audio.AUDIO_TRANSFER_END_MARKER
+        received = bytearray()
+        reopen_transfer = AsyncMock(return_value=True)
+        finalize_transfer = AsyncMock(return_value=True)
+
+        async def receive(
+            reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+        ) -> None:
+            while len(received) < len(expected_payload):
+                chunk = await reader.read(4096)
+                if not chunk:
+                    break
+                received.extend(chunk)
+            writer.write(audio.AUDIO_TRANSFER_ACK)
+            await writer.drain()
+            writer.close()
+
+        # Reserve a free port, then leave it closed until the feeder "opens" it.
+        probe = await asyncio.start_server(receive, "127.0.0.1", 0)
+        port = probe.sockets[0].getsockname()[1]
+        probe.close()
+        await probe.wait_closed()
+
+        async def open_later() -> asyncio.Server:
+            await asyncio.sleep(0.6)
+            return await asyncio.start_server(receive, "127.0.0.1", port)
+
+        opener = asyncio.create_task(open_later())
+        try:
+            await audio.async_send_audio(
+                f"127.0.0.1:{port}",
+                expected,
+                connect_timeout=5,
+                chunk_delay=0,
+                reopen_transfer=reopen_transfer,
+                reopen_interval=0.1,
+                finalize_transfer=finalize_transfer,
+            )
+        finally:
+            server = await opener
+            server.close()
+            await server.wait_closed()
+
+        self.assertEqual(bytes(received), expected_payload)
+        self.assertGreaterEqual(reopen_transfer.await_count, 1)
         finalize_transfer.assert_awaited_once_with()
 
     async def test_closes_transfer_mode_when_connection_fails(self) -> None:
