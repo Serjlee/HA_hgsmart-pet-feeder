@@ -10,7 +10,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import HGSmartApiClient, HGSmartAuthError
 from .const import DOMAIN, SCHEDULE_SLOTS
-from .helpers import parse_plan_value
+from .helpers import is_fountain, parse_plan_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,16 +44,15 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
             if not devices:
                 raise UpdateFailed("No devices found or API error")
 
-            # Filter to only S25D devices (only tested model)
             supported_devices = []
             for device in devices:
                 device_type = device.get("type", "")
-                if device_type.startswith("S25") or device_type.startswith("S30"):
+                if device_type.startswith(("S25", "S30")) or is_fountain(device):
                     supported_devices.append(device)
                 else:
                     _LOGGER.warning(
                         "Skipping unsupported device model '%s' (name: %s, id: %s). "
-                        "Only S25/D and S30/D models are currently supported.",
+                        "Only S25/D, S30/D and SW models are currently supported.",
                         device_type,
                         device.get("name", "Unknown"),
                         device.get("deviceId", "Unknown"),
@@ -66,13 +65,15 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
             device_data = {}
             for device in supported_devices:
                 device_id = device["deviceId"]
-                stats = await self.api.get_feeder_stats(device_id)
+                fountain = is_fountain(device)
+                # Fountains have no feeder summary or feeding schedules
+                stats = None if fountain else await self.api.get_feeder_stats(device_id)
                 attributes = await self.api.get_device_attributes(device_id)
                 today_events = await self.api.get_device_today_events(device_id)
 
                 # Parse schedule slots from attributes
                 schedules = {}
-                if attributes:
+                if attributes and not fountain:
                     for slot in range(SCHEDULE_SLOTS):  # Slots 0-5
                         plan_key = f"plan{slot}"
                         plan_value = attributes.get(plan_key, "0")

@@ -43,6 +43,11 @@ def get_device_info(device_id: str, device_info: dict[str, Any]) -> DeviceInfo:
     )
 
 
+def is_fountain(device_info: dict[str, Any]) -> bool:
+    """Return True for SW-series water fountains."""
+    return str(device_info.get("type", "")).startswith("SW")
+
+
 def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
     """Parse plan value string from API response.
 
