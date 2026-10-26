@@ -4,10 +4,14 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+)
 from homeassistant.helpers import device_registry as dr
 
-from .api import HGSmartApiClient
+from .api import HGSmartApiClient, HGSmartConnectionError
 from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, CONF_REFRESH_TOKEN
 from .coordinator import HGSmartDataUpdateCoordinator
 from .helpers import api_locale_from_hass, api_timezone_from_hass
@@ -34,15 +38,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     username = entry.data[CONF_USERNAME]
     refresh_token = entry.data.get(CONF_REFRESH_TOKEN)
 
+    def persist_refresh_token(new_token: str) -> None:
+        """Save a rotated refresh token so it survives restarts and reloads."""
+        if entry.data.get(CONF_REFRESH_TOKEN) != new_token:
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, CONF_REFRESH_TOKEN: new_token}
+            )
+
     api = HGSmartApiClient(
         username,
         refresh_token=refresh_token,
         locale=api_locale_from_hass(hass),
         timezone=api_timezone_from_hass(hass),
+        on_token_refresh=persist_refresh_token,
     )
 
     # Authenticate
-    if not await api.authenticate():
+    try:
+        authenticated = await api.authenticate()
+    except HGSmartConnectionError as err:
+        # API down or returning error pages: let HA retry setup later
+        # instead of asking the user to log in again
+        await api.close()
+        raise ConfigEntryNotReady(f"HGSmart API unavailable: {err}") from err
+    if not authenticated:
+        await api.close()
         raise ConfigEntryAuthFailed("Refresh token expired or invalid, please reauthenticate")
 
     update_interval = entry.options.get(
@@ -58,6 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
         "api": api,
+        "options": dict(entry.options),
     }
 
     dev_reg = dr.async_get(hass)
@@ -187,4 +208,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry when options change."""
+    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if (
+        entry_data
+        and entry.options == entry_data["options"]
+        and entry.data.get(CONF_REFRESH_TOKEN) == entry_data["api"].refresh_token
+    ):
+        # Only the running client's own rotated token was saved; no reload needed
+        return
     await hass.config_entries.async_reload(entry.entry_id)

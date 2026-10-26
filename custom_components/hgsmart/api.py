@@ -4,6 +4,7 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 import aiohttp
@@ -13,6 +14,10 @@ from .const import BASE_URL, CLIENT_ID, CLIENT_SECRET, MAX_PORTIONS, MIN_PORTION
 
 class HGSmartAuthError(Exception):
     """Raised when authentication with the HGSmart API fails definitively."""
+
+
+class HGSmartConnectionError(Exception):
+    """Raised when the HGSmart API can't be reached or returns a non-JSON page."""
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,6 +32,7 @@ class HGSmartApiClient:
         refresh_token: str | None = None,
         locale: str = "en-US",
         timezone: str = "UTC",
+        on_token_refresh: Callable[[str], None] | None = None,
     ) -> None:
         """Initialize the API client.
 
@@ -36,6 +42,8 @@ class HGSmartApiClient:
             refresh_token: Refresh token (used instead of password if available)
             locale: Locale string (affects strings returned from api)
             timezone: Timezone string (affects timestamps from api)
+            on_token_refresh: Called with the new refresh token whenever the
+                API issues one, so it can be persisted
         """
         self.username = username
         self.password = password
@@ -43,6 +51,7 @@ class HGSmartApiClient:
         self.timezone = timezone
         self.access_token: str | None = None
         self.refresh_token: str | None = refresh_token
+        self._on_token_refresh = on_token_refresh
         self._session: aiohttp.ClientSession | None = None
 
     def _ensure_session(self) -> aiohttp.ClientSession:
@@ -98,7 +107,13 @@ class HGSmartApiClient:
                 elif data.get("code") == 401:
                     # Token expired, try refresh
                     _LOGGER.info("Token expired, attempting refresh")
-                    if await self.refresh_access_token():
+                    try:
+                        refreshed = await self.refresh_access_token()
+                    except HGSmartConnectionError as err:
+                        # Server trouble, not bad credentials: retry next poll
+                        _LOGGER.warning("Token refresh failed, will retry: %s", err)
+                        return None
+                    if refreshed:
                         # Update headers with new token
                         headers["Authorization"] = f"Bearer {self.access_token}"
                         # Retry request
@@ -177,8 +192,7 @@ class HGSmartApiClient:
                     if not access or not refresh:
                         _LOGGER.error("Login response missing tokens")
                         return False
-                    self.access_token = access
-                    self.refresh_token = refresh
+                    self._set_tokens(access, refresh)
                     _LOGGER.debug("Successfully logged in to HGSmart")
                     return True
                 else:
@@ -188,8 +202,22 @@ class HGSmartApiClient:
             _LOGGER.exception("Login error: %s", e)
             return False
 
+    def _set_tokens(self, access: str, refresh: str) -> None:
+        """Store new tokens and report a changed refresh token."""
+        self.access_token = access
+        changed = refresh != self.refresh_token
+        self.refresh_token = refresh
+        if changed and self._on_token_refresh:
+            self._on_token_refresh(refresh)
+
     async def refresh_access_token(self) -> bool:
-        """Refresh access token using refresh token."""
+        """Refresh access token using refresh token.
+
+        Returns False if the API rejects the refresh token. Raises
+        HGSmartConnectionError if the API can't be reached or answers with
+        something other than JSON (outage/maintenance page), since that says
+        nothing about whether the token is still valid.
+        """
         if not self.refresh_token:
             return False
 
@@ -206,9 +234,10 @@ class HGSmartApiClient:
             ) as response:
                 try:
                     data = await response.json()
-                except aiohttp.ContentTypeError:
-                    _LOGGER.error("Token refresh response was not JSON")
-                    return False
+                except aiohttp.ContentTypeError as err:
+                    raise HGSmartConnectionError(
+                        f"Token refresh response was not JSON (HTTP {response.status})"
+                    ) from err
 
                 if data.get("code") == 200:
                     token_data = data.get("data") or {}
@@ -217,16 +246,14 @@ class HGSmartApiClient:
                     if not access or not refresh:
                         _LOGGER.error("Token refresh response missing tokens")
                         return False
-                    self.access_token = access
-                    self.refresh_token = refresh
+                    self._set_tokens(access, refresh)
                     _LOGGER.debug("Successfully refreshed token")
                     return True
                 else:
                     _LOGGER.error("Token refresh failed: %s", data.get("msg"))
                     return False
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            _LOGGER.exception("Token refresh error: %s", e)
-            return False
+            raise HGSmartConnectionError(f"Token refresh error: {e!r}") from e
 
     async def get_devices(self) -> list[dict[str, Any]]:
         """Get list of all devices."""
