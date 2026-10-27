@@ -14,6 +14,10 @@
         "title": "Assign Rooms",
         "description": "Select a room for each discovered device."
       },
+      "unsupported_models": {
+        "title": "Untested device models",
+        "description": "These devices have not been tested with this integration:\n\n{devices}\n\nThey will be added as generic feeders. Some entities may be missing or not work. Please report your results on GitHub. Submit to continue anyway."
+      },
       "reauth_confirm": {
         "title": "Reauthenticate HGSmart Account",
         "description": "Re-enter the password for {username}",

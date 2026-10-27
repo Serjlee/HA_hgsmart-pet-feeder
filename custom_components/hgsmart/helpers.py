@@ -5,7 +5,7 @@ from typing import Any, TypedDict
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import ATTR_CHILD, DOMAIN
+from .const import ATTR_CHILD, DOMAIN, SUPPORTED_MODEL_PREFIXES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +41,11 @@ def get_device_info(device_id: str, device_info: dict[str, Any]) -> DeviceInfo:
         model=device_info["type"],
         sw_version=device_info.get("fwVersion"),
     )
+
+
+def is_supported_model(device_info: dict[str, Any]) -> bool:
+    """Return True for models that have been tested with this integration."""
+    return str(device_info.get("type", "")).startswith(SUPPORTED_MODEL_PREFIXES)
 
 
 def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:

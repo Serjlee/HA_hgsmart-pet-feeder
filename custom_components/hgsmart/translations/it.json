@@ -14,6 +14,10 @@
         "title": "Assegna Stanze",
         "description": "Seleziona una stanza per ogni dispositivo trovato."
       },
+      "unsupported_models": {
+        "title": "Modelli non testati",
+        "description": "Questi dispositivi non sono stati testati con questa integrazione:\n\n{devices}\n\nVerranno aggiunti come mangiatoie generiche. Alcune entità potrebbero mancare o non funzionare. Segnala i risultati su GitHub. Invia per continuare comunque."
+      },
       "reauth_confirm": {
         "title": "Riautentica account HGSmart",
         "description": "Reinserisci la password per {username}",
