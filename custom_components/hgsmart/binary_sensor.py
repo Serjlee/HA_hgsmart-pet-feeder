@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import get_device_info
+from .helpers import get_device_info, is_fountain
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,7 +30,10 @@ async def async_setup_entry(
     for device_id, device_data in coordinator.data.items():
         device_info = device_data["device_info"]
         entities.append(HGSmartOnlineSensor(coordinator, device_id, device_info))
-        entities.append(HGSmartBatterySensor(coordinator, device_id, device_info))
+        if is_fountain(device_info):
+            entities.append(HGSmartLowWaterSensor(coordinator, device_id, device_info))
+        else:
+            entities.append(HGSmartBatterySensor(coordinator, device_id, device_info))
 
     async_add_entities(entities)
 
@@ -91,6 +94,40 @@ class HGSmartBatterySensor(CoordinatorEntity, BinarySensorEntity):
         device_data = self.coordinator.data.get(self.device_id)
         if device_data and device_data.get("attributes"):
             return device_data["attributes"].get("batstate") == "1"
+        return False
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.device_id in self.coordinator.data
+        )
+
+
+class HGSmartLowWaterSensor(CoordinatorEntity, BinarySensorEntity):
+    """Binary sensor for fountain low water level."""
+
+    def __init__(
+        self,
+        coordinator: HGSmartDataUpdateCoordinator,
+        device_id: str,
+        device_info: dict[str, Any],
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self.device_id = device_id
+        self._attr_unique_id = f"{device_id}_low_water"
+        self._attr_name = f"{device_info['name']} Low Water"
+        self._attr_device_class = BinarySensorDeviceClass.PROBLEM
+        self._attr_device_info = get_device_info(device_id, device_info)
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if the water level is low."""
+        device_data = self.coordinator.data.get(self.device_id)
+        if device_data and device_data.get("attributes"):
+            return device_data["attributes"].get("water_level") == "0"
         return False
 
     @property

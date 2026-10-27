@@ -13,6 +13,7 @@ This integration was developed through reverse engineering of the HGSmart Androi
 - Service for custom integrations / schedules (but you'll need to trust the HGSmart APIs and the pet feeder Wi-Fi connectivity)
 - Eating sensors for supported devices
 - Event logs
+- Basic support for SW-series water fountains (e.g. SW28): online, battery, low water and event logs
 
 ## Example cards
 
