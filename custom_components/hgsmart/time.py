@@ -86,10 +86,20 @@ class HGSmartScheduleTime(CoordinatorEntity, TimeEntity):
 
     async def async_set_value(self, value: dt_time) -> None:
         """Set the time value (converts local to UTC for API)."""
-        local_dt = dt_util.now().replace(
+        offsets = self.coordinator.schedule_offsets
+        now = dt_util.now()
+        offset = now.utcoffset()
+        assert offset is not None
+        if offsets is not None:
+            # This is a recurring time. On a transition day, its occurrence
+            # earlier today may have had a different offset.
+            now = now.astimezone(timezone(offset))
+        local_dt = now.replace(
             hour=value.hour, minute=value.minute, second=0, microsecond=0
         )
         utc_dt = dt_util.as_utc(local_dt)
+        offset = local_dt.utcoffset()
+        assert offset is not None
         utc_hour = utc_dt.hour
         utc_minute = utc_dt.minute
 
@@ -103,10 +113,15 @@ class HGSmartScheduleTime(CoordinatorEntity, TimeEntity):
         )
 
         def update(schedule: dict[str, Any]) -> dict[str, Any]:
-            # SF35 weekday masks are in UTC days: if the new time lands on a
-            # different UTC day relative to local than the old one, shift it
-            shift = utc_day_offset(utc_hour, utc_minute) - utc_day_offset(
-                schedule["hour"], schedule["minute"]
+            # Preserve the scheduled local days even if the old UTC time
+            # still uses the offset from before a timezone change.
+            old_offset = (
+                offsets.offset_for_schedule(self.device_id, self.slot, schedule)
+                if offsets is not None
+                else None
+            )
+            shift = (utc_dt.date() - local_dt.date()).days - utc_day_offset(
+                schedule["hour"], schedule["minute"], offset=old_offset
             )
             return {
                 "hour": utc_hour,
@@ -114,7 +129,12 @@ class HGSmartScheduleTime(CoordinatorEntity, TimeEntity):
                 "suffix": shift_weekday_mask(schedule["suffix"], shift),
             }
 
-        await self.coordinator.async_update_schedule(self.device_id, self.slot, update)
+        await self.coordinator.async_update_schedule(
+            self.device_id,
+            self.slot,
+            update,
+            time_offset=int(offset.total_seconds() / 60),
+        )
 
     @property
     def available(self) -> bool:

@@ -13,6 +13,30 @@ This integration was developed through reverse engineering of the HGSmart Androi
 - Service for custom integrations / schedules (but you'll need to trust the HGSmart APIs and the pet feeder Wi-Fi connectivity)
 - Eating sensors for supported devices
 - Event logs
+## Automatic timezone compensation
+
+In the integration's **Configure** options, enable **Automatically compensate for
+timezone offset changes** (off by default) to keep meals at the same local time
+when Home Assistant's timezone offset changes, including daylight saving time.
+The integration checks the offset every five minutes, independently of the normal
+update interval, and at startup. It adjusts each existing feeder schedule by
+`previous offset - current offset`, wrapping around midnight, without changing
+portions or whether a schedule is enabled.
+
+For example, a 20:30 meal in Europe/Paris uses 18:30 UTC in summer and 19:30 UTC
+in winter. Enabling this option establishes a reference from the current
+schedules; it does **not** fix an earlier shift. Set the desired meal times once
+if they have already shifted. Disabling the option leaves the feeder schedules
+as they are; re-enabling establishes a new reference.
+
+Offsets and unfinished corrections survive restarts. When a correction is
+unconfirmed, retries are spaced out per feeder, up to one hour apart, without
+applying the same shift twice. An offset change while Home Assistant is stopped
+is caught in the background at startup.
+HA and the HGSmart cloud must be available to apply changes; the feeder continues
+to use its previous schedules until compensation succeeds. Manual time changes
+in HA use the current offset and become the reference for that slot. Avoid editing
+the same schedules in the official app while compensation is pending.
 
 ## Example cards
 
@@ -695,6 +719,15 @@ As much as you can trust any random repository on the internet, I guess. I wrote
 ### Can you support more models?
 
 Probably, since the API looks generic enough to work with more models with little to no changes. Let me know you'd like to help me add support for more models.
+
+## Tests
+
+In a Python 3.14 virtual environment, run:
+
+```sh
+python -m pip install -r requirements-test.txt
+python -m pytest
+```
 
 ## License
 

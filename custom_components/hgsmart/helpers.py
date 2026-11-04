@@ -151,11 +151,15 @@ def has_weekday_mask(suffix: str | None) -> bool:
     )
 
 
-def utc_day_offset(utc_hour: int, utc_minute: int) -> int:
+def utc_day_offset(
+    utc_hour: int, utc_minute: int, *, offset: int | None = None
+) -> int:
     """Return how many days the UTC date is ahead of the local date at this time.
 
     E.g. 01:22 UTC is 19:22 the previous day in US Central, so the offset is 1.
     """
+    if offset is not None:
+        return -((utc_hour * 60 + utc_minute + offset) // (24 * 60))
     utc_dt = datetime.now(timezone.utc).replace(
         hour=utc_hour, minute=utc_minute, second=0, microsecond=0
     )
@@ -168,10 +172,12 @@ def mask_to_local_days(suffix: str, utc_hour: int, utc_minute: int) -> list[str]
     return [day for day, bit in zip(WEEKDAYS, local[1:]) if bit == "1"]
 
 
-def local_days_to_mask(days: list[str], utc_hour: int, utc_minute: int) -> str:
+def local_days_to_mask(
+    days: list[str], utc_hour: int, utc_minute: int, *, offset: int | None = None
+) -> str:
     """Convert local weekday names (mon..sun) to a UTC "_MTWTFSS" mask."""
     local = "_" + "".join("1" if day in days else "0" for day in WEEKDAYS)
-    return shift_weekday_mask(local, utc_day_offset(utc_hour, utc_minute))
+    return shift_weekday_mask(local, utc_day_offset(utc_hour, utc_minute, offset=offset))
 
 
 def get_max_schedule_portions(device_info: dict[str, Any]) -> int:
@@ -179,6 +185,11 @@ def get_max_schedule_portions(device_info: dict[str, Any]) -> int:
     if is_sf_model(device_info):
         return SF_MAX_SCHEDULE_PORTIONS
     return MAX_PORTIONS
+
+
+def is_plan_attribute(key: str) -> bool:
+    """Return whether a device attribute represents a schedule slot."""
+    return key.startswith("plan") and key[4:].isdigit()
 
 
 def get_schedule_slot_count(
@@ -193,7 +204,7 @@ def get_schedule_slot_count(
         return MAX_SCHEDULE_SLOTS
     count = SCHEDULE_SLOTS
     for key in attributes or {}:
-        if key.startswith("plan") and key[4:].isdigit():
+        if is_plan_attribute(key):
             count = max(count, int(key[4:]) + 1)
     return min(count, MAX_SCHEDULE_SLOTS)
 
