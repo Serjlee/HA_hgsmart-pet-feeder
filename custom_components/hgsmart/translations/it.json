@@ -36,6 +36,18 @@
       "already_configured": "Account già configurato"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Impostazioni HGSmart",
+        "description": "La compensazione verifica lo scostamento UTC di Home Assistant ogni cinque minuti e all’avvio, e regola gli orari della mangiatoia quando cambia. L’attivazione usa gli orari attuali come riferimento e non corregge gli spostamenti già avvenuti.",
+        "data": {
+          "update_interval": "Intervallo di aggiornamento (minuti)",
+          "compensate_timezone_offset": "Compensa automaticamente i cambiamenti dello scostamento UTC"
+        }
+      }
+    }
+  },
   "services": {
     "feed": {
       "name": "Dai da mangiare",

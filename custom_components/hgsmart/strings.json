@@ -36,6 +36,18 @@
       "already_configured": "Account is already configured"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HGSmart settings",
+        "description": "Timezone compensation checks the Home Assistant UTC offset every five minutes and at startup, and adjusts feeder schedules when it changes. Enabling it keeps the current schedules as the reference; existing shifts are not corrected retroactively.",
+        "data": {
+          "update_interval": "Update interval (minutes)",
+          "compensate_timezone_offset": "Automatically compensate for timezone offset changes"
+        }
+      }
+    }
+  },
   "services": {
     "feed": {
       "name": "Feed",

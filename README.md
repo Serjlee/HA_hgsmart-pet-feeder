@@ -13,6 +13,29 @@ This integration was developed through reverse engineering of the HGSmart Androi
 - Service for custom integrations / schedules (but you'll need to trust the HGSmart APIs and the pet feeder Wi-Fi connectivity)
 - Eating sensors for supported devices
 - Event logs
+## Automatic timezone compensation
+
+In the integration's **Configure** options, enable **Automatically compensate for
+timezone offset changes** (off by default) to keep meals at the same local time
+when Home Assistant's timezone offset changes, including daylight saving time.
+The integration checks the offset every five minutes, independently of the normal
+update interval, and at startup. It adjusts each existing feeder schedule by
+`previous offset - current offset`, wrapping around midnight, without changing
+portions or whether a schedule is enabled.
+
+For example, a 20:30 meal in Europe/Paris uses 18:30 UTC in summer and 19:30 UTC
+in winter. Enabling this option establishes a reference from the current
+schedules; it does **not** fix an earlier shift. Set the desired meal times once
+if they have already shifted. Disabling the option leaves the feeder schedules
+as they are; re-enabling establishes a new reference.
+
+Offsets and unfinished corrections survive restarts. Corrections are retried
+until the cloud reports the requested time, without applying the same shift
+twice. An offset change while Home Assistant is stopped is caught at startup.
+HA and the HGSmart cloud must be available to apply changes; the feeder continues
+to use its previous schedules until compensation succeeds. Manual time changes
+in HA use the current offset and become the reference for that slot. Avoid editing
+the same schedules in the official app while compensation is pending.
 
 ## Example cards
 

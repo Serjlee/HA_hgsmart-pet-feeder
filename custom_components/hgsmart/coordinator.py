@@ -1,9 +1,9 @@
 """Data update coordinator for HGSmart Pet Feeder."""
 import asyncio
 from collections.abc import Callable
-from datetime import timedelta
 import logging
-from typing import Any
+from datetime import timedelta
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
@@ -20,6 +20,9 @@ from .helpers import (
     parse_plan_value,
 )
 
+if TYPE_CHECKING:
+    from .schedule_offsets import HGSmartScheduleOffsets
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -35,6 +38,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(minutes=update_interval),
         )
         self.api = api
+        self.schedule_offsets: HGSmartScheduleOffsets | None = None
         self._schedule_locks: dict[tuple[str, int], asyncio.Lock] = {}
         self._warned_unsupported: set[str] = set()
 
@@ -50,6 +54,8 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
         device_id: str,
         slot: int,
         update: Callable[[dict[str, Any]], dict[str, Any]],
+        *,
+        record_time_offset: bool = False,
     ) -> None:
         """Apply update(schedule) optimistically and write the slot to the device.
 
@@ -82,6 +88,8 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                     raise HomeAssistantError(
                         f"Failed to update schedule {slot + 1} on {name}"
                     )
+                if record_time_offset and self.schedule_offsets is not None:
+                    await self.schedule_offsets.async_record_time(device_id, slot)
             except Exception:
                 schedule.update(old)
                 self.async_update_listeners()
