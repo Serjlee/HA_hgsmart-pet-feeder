@@ -11,6 +11,7 @@ from homeassistant.data_entry_flow import FlowResult
 
 from .api import HGSmartApiClient
 from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, CONF_REFRESH_TOKEN
+from .helpers import is_supported_model
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,6 +34,8 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._reauth_entry: config_entries.ConfigEntry | None = None
+        self._pending_entry: dict[str, Any] | None = None
+        self._unsupported: list[str] = []
 
     @staticmethod
     def async_get_options_flow(
@@ -62,14 +65,22 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         self._abort_if_unique_id_configured()
 
                         # Store username, refresh_token, and update_interval (NOT password)
-                        return self.async_create_entry(
-                            title=f"HGSmart ({username})",
-                            data={
+                        self._pending_entry = {
+                            "title": f"HGSmart ({username})",
+                            "data": {
                                 CONF_USERNAME: username,
                                 CONF_REFRESH_TOKEN: api.refresh_token,
                                 CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL],
                             },
-                        )
+                        }
+                        self._unsupported = [
+                            f"{d.get('name', d.get('deviceId', '?'))} ({d.get('type', 'unknown')})"
+                            for d in devices
+                            if not is_supported_model(d)
+                        ]
+                        if self._unsupported:
+                            return await self.async_step_unsupported_models()
+                        return self.async_create_entry(**self._pending_entry)
                     else:
                         errors["base"] = "no_devices"
                 else:
@@ -90,6 +101,20 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
             errors=errors,
+        )
+
+    async def async_step_unsupported_models(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Warn about untested models and let the user continue anyway."""
+        if user_input is not None:
+            return self.async_create_entry(**self._pending_entry)
+
+        return self.async_show_form(
+            step_id="unsupported_models",
+            description_placeholders={
+                "devices": "\n".join(f"- {d}" for d in self._unsupported)
+            },
         )
 
     async def async_step_reauth(

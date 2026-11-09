@@ -10,7 +10,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import HGSmartApiClient, HGSmartAuthError
 from .const import DOMAIN, SCHEDULE_SLOTS
-from .helpers import parse_plan_value
+from .helpers import is_supported_model, parse_plan_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
         )
         self.api = api
         self._schedule_locks: dict[tuple[str, int], asyncio.Lock] = {}
+        self._warned_unsupported: set[str] = set()
 
     def get_schedule_lock(self, device_id: str, slot: int) -> asyncio.Lock:
         """Return a per-slot lock, creating it lazily."""
@@ -44,31 +45,46 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
             if not devices:
                 raise UpdateFailed("No devices found or API error")
 
-            # Filter to only S25D devices (only tested model)
-            supported_devices = []
-            for device in devices:
-                device_type = device.get("type", "")
-                if device_type.startswith("S25") or device_type.startswith("S30"):
-                    supported_devices.append(device)
-                else:
-                    _LOGGER.warning(
-                        "Skipping unsupported device model '%s' (name: %s, id: %s). "
-                        "Only S25/D and S30/D models are currently supported.",
-                        device_type,
-                        device.get("name", "Unknown"),
-                        device.get("deviceId", "Unknown"),
-                    )
-
-            if not supported_devices:
-                raise UpdateFailed("No supported devices found")
-
             # Fetch stats for each device
             device_data = {}
-            for device in supported_devices:
-                device_id = device["deviceId"]
-                stats = await self.api.get_feeder_stats(device_id)
-                attributes = await self.api.get_device_attributes(device_id)
-                today_events = await self.api.get_device_today_events(device_id)
+            for device in devices:
+                device_id = device.get("deviceId")
+                if not device_id:
+                    continue
+                # Untested models may omit fields entities rely on
+                device["name"] = device.get("name") or f"HGSmart {device_id}"
+                device["type"] = device.get("type") or "Unknown"
+                supported = is_supported_model(device)
+                if not supported and device_id not in self._warned_unsupported:
+                    self._warned_unsupported.add(device_id)
+                    _LOGGER.warning(
+                        "Device model '%s' (name: %s, id: %s) has not been tested "
+                        "with this integration; treating it as a generic feeder. "
+                        "Some entities may not work.",
+                        device["type"],
+                        device["name"],
+                        device_id,
+                    )
+                try:
+                    stats = await self.api.get_feeder_stats(device_id)
+                    attributes = await self.api.get_device_attributes(device_id)
+                    today_events = await self.api.get_device_today_events(device_id)
+                except HGSmartAuthError:
+                    raise
+                except Exception:  # pylint: disable=broad-except
+                    if supported:
+                        raise
+                    # Don't let an untested model break the supported ones
+                    _LOGGER.exception(
+                        "Failed to fetch data for untested model '%s' (%s); skipping",
+                        device["type"],
+                        device_id,
+                    )
+                    continue
+                if not isinstance(stats, dict):
+                    stats = None
+                if not isinstance(attributes, dict):
+                    attributes = None
 
                 # Parse schedule slots from attributes
                 schedules = {}
@@ -98,6 +114,9 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                     "today_events": today_events
                     or {"events": [], "total": 0},
                 }
+
+            if not device_data:
+                raise UpdateFailed("No usable devices found")
 
             return device_data
 
