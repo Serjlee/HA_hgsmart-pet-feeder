@@ -5,7 +5,7 @@ from typing import Any, TypedDict
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import ATTR_CHILD, DOMAIN, SUPPORTED_MODEL_PREFIXES
+from .const import ATTR_CHILD, DOMAIN, SCHEDULE_SLOTS, SUPPORTED_MODEL_PREFIXES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,6 +18,8 @@ class ScheduleSlotData(TypedDict):
     minute: int
     portions: int
     slot: int
+    flag: str  # 6th character; "0" on S25/S30, "1" seen on SF35 (meaning unknown)
+    suffix: str  # trailing data, e.g. "_1111111" weekday mask on SF35
 
 
 def api_locale_from_hass(hass: HomeAssistant) -> str:
@@ -51,15 +53,19 @@ def is_supported_model(device_info: dict[str, Any]) -> bool:
 def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
     """Parse plan value string from API response.
 
-    Format: SHHMMXPD (8 characters)
+    Format: SHHMMXPD[suffix]
     - S: Status (1=Enabled, 0=Disabled, 3=Delete)
     - HH: Hour (00-23) in UTC
     - MM: Minute (00-59)
-    - X: Spacer (always 0)
+    - X: Flag (0 on S25/S30; 1 seen on SF35, meaning unknown)
     - P: Portions (1-9)
-    - D: Slot ID (0-5)
+    - D: Slot ID (0-5 on S25/S30, 0-9 on SF35)
+    - suffix: optional trailing data, e.g. "_1111111" weekday mask on SF35
 
     Example: "10940033" = Enabled, 09:40 UTC, 3 portions, slot 3
+    Example: "11100121_1111111" = Enabled, 11:00 UTC, 2 portions, slot 1, every day
+
+    Unknown parts (X and suffix) are kept so they can be written back unchanged.
     """
     if not plan_value or plan_value == "0" or len(plan_value) < 8:
         return None
@@ -90,6 +96,8 @@ def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
             "minute": minute,
             "portions": portions,
             "slot": slot,
+            "flag": plan_value[5],
+            "suffix": plan_value[8:],
         }
     except (ValueError, IndexError) as e:
         _LOGGER.error("Error parsing plan value %s: %s", plan_value, e)
@@ -97,11 +105,30 @@ def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
 
 
 def build_plan_value(
-    hour: int, minute: int, portions: int, slot: int, enabled: bool = True
+    hour: int,
+    minute: int,
+    portions: int,
+    slot: int,
+    enabled: bool = True,
+    flag: str = "0",
+    suffix: str = "",
 ) -> str:
     """Build plan value string for API. See parse_plan_value() for format details."""
     status = 1 if enabled else 0
-    return f"{status}{hour:02d}{minute:02d}0{portions}{slot}"
+    return f"{status}{hour:02d}{minute:02d}{flag}{portions}{slot}{suffix}"
+
+
+def get_schedule_slot_count(attributes: dict[str, Any] | None) -> int:
+    """Return how many schedule slots a device exposes.
+
+    S25/S30 report plan0-plan5; SF35 reports plan0-plan9. Slot IDs are a single
+    digit in the plan string, so cap at 10.
+    """
+    count = SCHEDULE_SLOTS
+    for key in attributes or {}:
+        if key.startswith("plan") and key[4:].isdigit():
+            count = max(count, int(key[4:]) + 1)
+    return min(count, 10)
 
 def read_child_lock_raw(device_data: dict[str, Any]) -> str | None:
     """Read child lock value from the attribute payload (GET /device/attribute)."""

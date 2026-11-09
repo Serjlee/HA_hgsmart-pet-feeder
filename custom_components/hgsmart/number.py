@@ -46,7 +46,7 @@ async def async_setup_entry(
         )
 
         # Add schedule portions entities for each slot
-        for slot in range(SCHEDULE_SLOTS):
+        for slot in range(device_data.get("schedule_slots", SCHEDULE_SLOTS)):
             entities.append(
                 HGSmartSchedulePortions(coordinator, api, device_id, device_info, slot)
             )
@@ -225,7 +225,9 @@ class HGSmartSchedulePortions(CoordinatorEntity, NumberEntity):
 
             try:
                 success = await self.api.set_schedule(
-                    self.device_id, self.slot, hour, minute, portions, enabled
+                    self.device_id, self.slot, hour, minute, portions, enabled,
+                    flag=schedule.get("flag", "0"),
+                    suffix=schedule.get("suffix", ""),
                 )
                 if not success:
                     raise HomeAssistantError(

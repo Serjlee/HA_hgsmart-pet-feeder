@@ -41,14 +41,17 @@ async def async_setup_entry(
         device_info = device_data["device_info"]
 
         # Add schedule enable switches for each slot
-        for slot in range(SCHEDULE_SLOTS):
+        for slot in range(device_data.get("schedule_slots", SCHEDULE_SLOTS)):
             entities.append(
                 HGSmartScheduleSwitch(coordinator, api, device_id, device_info, slot)
             )
 
-        entities.append(
-            HGSmartButtonLockoutSwitch(coordinator, api, device_id, device_info)
-        )
+        # SF35 has no button lockout; keep the switch if attributes failed to load
+        attributes = device_data.get("attributes")
+        if not attributes or ATTR_CHILD in attributes:
+            entities.append(
+                HGSmartButtonLockoutSwitch(coordinator, api, device_id, device_info)
+            )
 
     async_add_entities(entities)
 
@@ -110,7 +113,9 @@ class HGSmartScheduleSwitch(CoordinatorEntity, SwitchEntity):
 
             try:
                 success = await self.api.set_schedule(
-                    self.device_id, self.slot, hour, minute, portions, enabled
+                    self.device_id, self.slot, hour, minute, portions, enabled,
+                    flag=schedule.get("flag", "0"),
+                    suffix=schedule.get("suffix", ""),
                 )
                 if not success:
                     raise HomeAssistantError(

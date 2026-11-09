@@ -9,8 +9,8 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import HGSmartApiClient, HGSmartAuthError
-from .const import DOMAIN, SCHEDULE_SLOTS
-from .helpers import is_supported_model, parse_plan_value
+from .const import DOMAIN
+from .helpers import get_schedule_slot_count, is_supported_model, parse_plan_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -88,12 +88,18 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
 
                 # Parse schedule slots from attributes
                 schedules = {}
+                slot_count = get_schedule_slot_count(attributes)
                 if attributes:
-                    for slot in range(SCHEDULE_SLOTS):  # Slots 0-5
-                        plan_key = f"plan{slot}"
-                        plan_value = attributes.get(plan_key, "0")
-                        parsed = parse_plan_value(str(plan_value))
-
+                    parsed_plans = {
+                        slot: parse_plan_value(str(attributes.get(f"plan{slot}", "0")))
+                        for slot in range(slot_count)
+                    }
+                    # Empty slots copy the flag/suffix format of a configured one,
+                    # so e.g. SF35 slots get a weekday mask when first enabled
+                    template = next(
+                        (p for p in parsed_plans.values() if p), None
+                    )
+                    for slot, parsed in parsed_plans.items():
                         if parsed:
                             schedules[slot] = parsed
                         else:
@@ -104,6 +110,8 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                                 "minute": 0,
                                 "portions": 1,
                                 "slot": slot,
+                                "flag": template["flag"] if template else "0",
+                                "suffix": template["suffix"] if template else "",
                             }
 
                 device_data[device_id] = {
@@ -111,6 +119,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                     "stats": stats or {},
                     "attributes": attributes or {},
                     "schedules": schedules,
+                    "schedule_slots": slot_count,
                     "today_events": today_events
                     or {"events": [], "total": 0},
                 }
