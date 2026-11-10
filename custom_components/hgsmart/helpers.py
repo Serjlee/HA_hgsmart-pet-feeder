@@ -17,6 +17,16 @@ from .const import (
     WEEKDAYS,
 )
 
+WEEKDAY_NAMES = {
+    "mon": "monday",
+    "tue": "tuesday",
+    "wed": "wednesday",
+    "thu": "thursday",
+    "fri": "friday",
+    "sat": "saturday",
+    "sun": "sunday",
+}
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -167,6 +177,42 @@ def local_days_to_mask(days: list[str], utc_hour: int, utc_minute: int) -> str:
     """Convert local weekday names (mon..sun) to a UTC "_MTWTFSS" mask."""
     local = "_" + "".join("1" if day in days else "0" for day in WEEKDAYS)
     return shift_weekday_mask(local, utc_day_offset(utc_hour, utc_minute))
+
+
+DAY_SHORTCUTS = {
+    "daily": WEEKDAYS,
+    "everyday": WEEKDAYS,
+    "weekdays": WEEKDAYS[:5],
+    "weekends": WEEKDAYS[5:],
+}
+
+
+def parse_days(value: str) -> list[str]:
+    """Parse "mon,wed,fri", "Monday Friday", "weekdays", ... into weekday names.
+
+    Raises ValueError on unknown names or an empty list.
+    """
+    days: set[str] = set()
+    for token in value.lower().replace(",", " ").split():
+        if token in DAY_SHORTCUTS:
+            days.update(DAY_SHORTCUTS[token])
+            continue
+        day = token[:3]
+        full = WEEKDAY_NAMES.get(day)
+        if full is None or not full.startswith(token):
+            raise ValueError(f"Unknown day '{token}'")
+        days.add(day)
+    if not days:
+        raise ValueError("At least one day is required")
+    return [day for day in WEEKDAYS if day in days]
+
+
+def format_days(days: list[str]) -> str:
+    """Format weekday names for display, using shortcuts where they fit."""
+    for name, shortcut in DAY_SHORTCUTS.items():
+        if name != "everyday" and days == shortcut:
+            return name
+    return ",".join(days)
 
 
 def get_max_schedule_portions(device_info: dict[str, Any]) -> int:

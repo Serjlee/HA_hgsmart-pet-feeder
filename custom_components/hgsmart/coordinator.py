@@ -5,12 +5,18 @@ import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import HGSmartApiClient, HGSmartAuthError
 from .const import DOMAIN
-from .helpers import get_schedule_slot_count, is_supported_model, parse_plan_value
+from .helpers import (
+    get_schedule_slot_count,
+    has_weekday_mask,
+    is_supported_model,
+    local_days_to_mask,
+    parse_plan_value,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,6 +42,45 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
         if key not in self._schedule_locks:
             self._schedule_locks[key] = asyncio.Lock()
         return self._schedule_locks[key]
+
+    async def async_set_schedule_days(
+        self, device_id: str, slot: int, days: list[str]
+    ) -> None:
+        """Set the local weekdays a schedule slot runs on (SF35 weekday mask)."""
+        async with self.get_schedule_lock(device_id, slot):
+            device_data = (self.data or {}).get(device_id)
+            if not device_data:
+                raise HomeAssistantError(f"Device {device_id} is not loaded")
+            name = device_data["device_info"].get("name", device_id)
+            schedule = device_data.get("schedules", {}).get(slot)
+            if not schedule:
+                raise HomeAssistantError(f"{name} has no schedule {slot + 1}")
+            if not has_weekday_mask(schedule.get("suffix")):
+                raise HomeAssistantError(f"{name} does not support weekly schedules")
+
+            old_suffix = schedule["suffix"]
+            suffix = local_days_to_mask(days, schedule["hour"], schedule["minute"])
+            schedule["suffix"] = suffix
+            self.async_update_listeners()
+            try:
+                success = await self.api.set_schedule(
+                    device_id,
+                    slot,
+                    schedule["hour"],
+                    schedule["minute"],
+                    schedule["portions"],
+                    schedule["enabled"],
+                    suffix=suffix,
+                )
+                if not success:
+                    raise HomeAssistantError(
+                        f"Failed to set days for schedule {slot + 1} on {name}"
+                    )
+            except Exception:
+                schedule["suffix"] = old_suffix
+                self.async_update_listeners()
+                raise
+        await self.async_request_refresh()
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from API."""
@@ -110,7 +155,12 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                                 "minute": 0,
                                 "portions": 1,
                                 "slot": slot,
-                                "suffix": template["suffix"] if template else "",
+                                "suffix": template["suffix"]
+                                if template
+                                # SF35 with no plans yet: default to every day
+                                else "_1111111"
+                                if device["type"].upper().startswith("SF")
+                                else "",
                             }
 
                 device_data[device_id] = {

@@ -18,16 +18,10 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
-    SCHEDULE_SLOTS,
     WEEKDAYS,
 )
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import (
-    api_locale_from_hass,
-    api_timezone_from_hass,
-    has_weekday_mask,
-    local_days_to_mask,
-)
+from .helpers import api_locale_from_hass, api_timezone_from_hass
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +50,7 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SWITCH,
+    Platform.TEXT,
     Platform.TIME,
 ]
 
@@ -227,51 +222,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.warning("Device %s is not an HGSmart device - skipping", ha_device_id)
                 continue
 
-            coordinator = api_client = None
-            for entry_data in hass.data[DOMAIN].values():
-                if isinstance(entry_data, dict) and our_device_id in (
-                    entry_data["coordinator"].data or {}
-                ):
-                    coordinator = entry_data["coordinator"]
-                    api_client = entry_data["api"]
-                    break
+            coordinator = next(
+                (
+                    entry_data["coordinator"]
+                    for entry_data in hass.data[DOMAIN].values()
+                    if isinstance(entry_data, dict)
+                    and our_device_id in (entry_data["coordinator"].data or {})
+                ),
+                None,
+            )
             if not coordinator:
                 raise HomeAssistantError(f"Device {our_device_id} is not loaded")
 
-            async with coordinator.get_schedule_lock(our_device_id, slot):
-                device_data = coordinator.data[our_device_id]
-                if slot >= device_data.get("schedule_slots", SCHEDULE_SLOTS):
-                    raise HomeAssistantError(
-                        f"{device.name} has no schedule {slot + 1}"
-                    )
-                schedule = device_data.get("schedules", {}).get(slot)
-                if not schedule or not has_weekday_mask(schedule.get("suffix")):
-                    raise HomeAssistantError(
-                        f"{device.name} does not support weekly schedules"
-                    )
-
-                old_suffix = schedule["suffix"]
-                suffix = local_days_to_mask(days, schedule["hour"], schedule["minute"])
-                schedule["suffix"] = suffix
-                try:
-                    success = await api_client.set_schedule(
-                        our_device_id,
-                        slot,
-                        schedule["hour"],
-                        schedule["minute"],
-                        schedule["portions"],
-                        schedule["enabled"],
-                        suffix=suffix,
-                    )
-                    if not success:
-                        raise HomeAssistantError(
-                            f"Failed to set days for schedule {slot + 1} on {device.name}"
-                        )
-                except Exception:
-                    schedule["suffix"] = old_suffix
-                    raise
-            coordinator.async_update_listeners()
-            await coordinator.async_request_refresh()
+            await coordinator.async_set_schedule_days(our_device_id, slot, days)
             processed_any = True
 
         if not processed_any:
