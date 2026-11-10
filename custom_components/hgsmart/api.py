@@ -449,7 +449,6 @@ class HGSmartApiClient:
         minute: int,
         portions: int,
         enabled: bool = True,
-        flag: str = "0",
         suffix: str = "",
     ) -> bool:
         """Set a feeding schedule slot.
@@ -459,10 +458,9 @@ class HGSmartApiClient:
             slot: Slot number (0-5, or 0-9 on SF35)
             hour: Hour in 24-hour UTC format (0-23)
             minute: Minute (0-59)
-            portions: Number of portions (1-9)
+            portions: Number of portions (1-9, or 1-24 on SF35)
             enabled: Whether the schedule is enabled
-            flag: 6th plan character, preserved from the device's current value
-            suffix: Trailing plan data (e.g. SF35 weekday mask), preserved as-is
+            suffix: Trailing plan data (SF35 weekday mask), preserved as-is
 
         Returns:
             True if successful, False otherwise
@@ -477,7 +475,7 @@ class HGSmartApiClient:
         message_id = spoofed_uuid.hex
 
         command_value = build_plan_value(
-            hour, minute, portions, slot, enabled, flag, suffix
+            hour, minute, portions, slot, enabled, suffix
         )
 
         payload_dict = {

@@ -1,11 +1,21 @@
 """Helper functions for the HGSmart Pet Feeder integration."""
+from datetime import datetime, timezone
 import logging
 from typing import Any, TypedDict
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.util import dt as dt_util
 
-from .const import ATTR_CHILD, DOMAIN, SCHEDULE_SLOTS, SUPPORTED_MODEL_PREFIXES
+from .const import (
+    ATTR_CHILD,
+    DOMAIN,
+    MAX_PORTIONS,
+    SCHEDULE_SLOTS,
+    SF_MAX_SCHEDULE_PORTIONS,
+    SUPPORTED_MODEL_PREFIXES,
+    WEEKDAYS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,8 +28,7 @@ class ScheduleSlotData(TypedDict):
     minute: int
     portions: int
     slot: int
-    flag: str  # 6th character; "0" on S25/S30, "1" seen on SF35 (meaning unknown)
-    suffix: str  # trailing data, e.g. "_1111111" weekday mask on SF35
+    suffix: str  # trailing data, e.g. "_1111111" UTC weekday mask on SF35
 
 
 def api_locale_from_hass(hass: HomeAssistant) -> str:
@@ -53,19 +62,18 @@ def is_supported_model(device_info: dict[str, Any]) -> bool:
 def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
     """Parse plan value string from API response.
 
-    Format: SHHMMXPD[suffix]
-    - S: Status (1=Enabled, 0=Disabled, 3=Delete)
+    Format: SHHMMPPD[_MTWTFSS]
+    - S: Status (1=Enabled, 0=Disabled, 3=Delete on S25/S30, 2=Deleted on SF35)
     - HH: Hour (00-23) in UTC
     - MM: Minute (00-59)
-    - X: Flag (0 on S25/S30; 1 seen on SF35, meaning unknown)
-    - P: Portions (1-9)
+    - PP: Portions (01-09 on S25/S30, 01-24 on SF35)
     - D: Slot ID (0-5 on S25/S30, 0-9 on SF35)
-    - suffix: optional trailing data, e.g. "_1111111" weekday mask on SF35
+    - _MTWTFSS: SF35 only, weekday mask Monday..Sunday (1=active), in UTC days
 
     Example: "10940033" = Enabled, 09:40 UTC, 3 portions, slot 3
-    Example: "11100121_1111111" = Enabled, 11:00 UTC, 2 portions, slot 1, every day
+    Example: "11100121_1111111" = Enabled, 11:00 UTC, 12 portions, slot 1, every day
 
-    Unknown parts (X and suffix) are kept so they can be written back unchanged.
+    The suffix is kept so it can be written back unchanged.
     """
     if not plan_value or plan_value == "0" or len(plan_value) < 8:
         return None
@@ -74,7 +82,7 @@ def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
         status = int(plan_value[0])
         hour = int(plan_value[1:3])
         minute = int(plan_value[3:5])
-        portions = int(plan_value[6])
+        portions = int(plan_value[5:7])
         slot = int(plan_value[7])
 
         # Validate ranges
@@ -96,7 +104,6 @@ def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
             "minute": minute,
             "portions": portions,
             "slot": slot,
-            "flag": plan_value[5],
             "suffix": plan_value[8:],
         }
     except (ValueError, IndexError) as e:
@@ -110,12 +117,63 @@ def build_plan_value(
     portions: int,
     slot: int,
     enabled: bool = True,
-    flag: str = "0",
     suffix: str = "",
 ) -> str:
     """Build plan value string for API. See parse_plan_value() for format details."""
     status = 1 if enabled else 0
-    return f"{status}{hour:02d}{minute:02d}{flag}{portions}{slot}{suffix}"
+    return f"{status}{hour:02d}{minute:02d}{portions:02d}{slot}{suffix}"
+
+
+def shift_weekday_mask(suffix: str, days: int) -> str:
+    """Shift an SF35 "_MTWTFSS" weekday mask by ``days`` (positive = later).
+
+    The mask is in UTC days, so it must move when a time change makes the
+    schedule cross midnight UTC. Other suffixes are returned unchanged.
+    """
+    mask = suffix[1:]
+    if days % 7 == 0 or not suffix.startswith("_") or len(mask) != 7:
+        return suffix
+    return "_" + "".join(mask[(i - days) % 7] for i in range(7))
+
+
+def has_weekday_mask(suffix: str | None) -> bool:
+    """Return True if a plan suffix is an SF35 "_MTWTFSS" weekday mask."""
+    return (
+        isinstance(suffix, str)
+        and len(suffix) == 8
+        and suffix[0] == "_"
+        and set(suffix[1:]) <= {"0", "1"}
+    )
+
+
+def utc_day_offset(utc_hour: int, utc_minute: int) -> int:
+    """Return how many days the UTC date is ahead of the local date at this time.
+
+    E.g. 01:22 UTC is 19:22 the previous day in US Central, so the offset is 1.
+    """
+    utc_dt = datetime.now(timezone.utc).replace(
+        hour=utc_hour, minute=utc_minute, second=0, microsecond=0
+    )
+    return (utc_dt.date() - dt_util.as_local(utc_dt).date()).days
+
+
+def mask_to_local_days(suffix: str, utc_hour: int, utc_minute: int) -> list[str]:
+    """Convert a UTC weekday mask to local weekday names (mon..sun)."""
+    local = shift_weekday_mask(suffix, -utc_day_offset(utc_hour, utc_minute))
+    return [day for day, bit in zip(WEEKDAYS, local[1:]) if bit == "1"]
+
+
+def local_days_to_mask(days: list[str], utc_hour: int, utc_minute: int) -> str:
+    """Convert local weekday names (mon..sun) to a UTC "_MTWTFSS" mask."""
+    local = "_" + "".join("1" if day in days else "0" for day in WEEKDAYS)
+    return shift_weekday_mask(local, utc_day_offset(utc_hour, utc_minute))
+
+
+def get_max_schedule_portions(device_info: dict[str, Any]) -> int:
+    """Return the max portions per scheduled meal (SF35 allows 24)."""
+    if str(device_info.get("type", "")).upper().startswith("SF"):
+        return SF_MAX_SCHEDULE_PORTIONS
+    return MAX_PORTIONS
 
 
 def get_schedule_slot_count(attributes: dict[str, Any] | None) -> int:

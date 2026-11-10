@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import HGSmartApiClient
 from .const import DOMAIN, MAX_PORTIONS, MIN_PORTIONS, SCHEDULE_SLOTS
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import get_device_info
+from .helpers import get_device_info, get_max_schedule_portions
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -190,7 +190,7 @@ class HGSmartSchedulePortions(CoordinatorEntity, NumberEntity):
         self._attr_name = f"{device_info['name']} Schedule {slot + 1} Portions"
         self._attr_icon = "mdi:food"
         self._attr_native_min_value = MIN_PORTIONS
-        self._attr_native_max_value = MAX_PORTIONS
+        self._attr_native_max_value = get_max_schedule_portions(device_info)
         self._attr_native_step = 1
         self._attr_mode = NumberMode.BOX
         self._attr_device_info = get_device_info(device_id, device_info)
@@ -226,7 +226,6 @@ class HGSmartSchedulePortions(CoordinatorEntity, NumberEntity):
             try:
                 success = await self.api.set_schedule(
                     self.device_id, self.slot, hour, minute, portions, enabled,
-                    flag=schedule.get("flag", "0"),
                     suffix=schedule.get("suffix", ""),
                 )
                 if not success:

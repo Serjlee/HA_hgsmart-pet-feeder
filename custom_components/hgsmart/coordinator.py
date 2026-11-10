@@ -94,7 +94,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                         slot: parse_plan_value(str(attributes.get(f"plan{slot}", "0")))
                         for slot in range(slot_count)
                     }
-                    # Empty slots copy the flag/suffix format of a configured one,
+                    # Empty slots copy the suffix format of a configured one,
                     # so e.g. SF35 slots get a weekday mask when first enabled
                     template = next(
                         (p for p in parsed_plans.values() if p), None
@@ -110,7 +110,6 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                                 "minute": 0,
                                 "portions": 1,
                                 "slot": slot,
-                                "flag": template["flag"] if template else "0",
                                 "suffix": template["suffix"] if template else "",
                             }
 

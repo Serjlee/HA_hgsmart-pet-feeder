@@ -14,6 +14,8 @@ from .api import HGSmartApiClient
 from .const import ATTR_CHILD, DOMAIN, SCHEDULE_SLOTS
 from .coordinator import HGSmartDataUpdateCoordinator
 from .helpers import (
+    has_weekday_mask,
+    mask_to_local_days,
     get_device_info,
     is_child_lock_active,
     read_child_lock_raw,
@@ -78,6 +80,20 @@ class HGSmartScheduleSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_device_info = get_device_info(device_id, device_info)
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the local weekdays for models with weekly schedules (SF35)."""
+        device_data = self.coordinator.data.get(self.device_id) or {}
+        schedule = (device_data.get("schedules") or {}).get(self.slot) or {}
+        suffix = schedule.get("suffix", "")
+        if not has_weekday_mask(suffix):
+            return {}
+        return {
+            "days": mask_to_local_days(
+                suffix, schedule.get("hour", 8), schedule.get("minute", 0)
+            )
+        }
+
+    @property
     def is_on(self) -> bool:
         """Return true if schedule slot is enabled."""
         device_data = self.coordinator.data.get(self.device_id)
@@ -114,7 +130,6 @@ class HGSmartScheduleSwitch(CoordinatorEntity, SwitchEntity):
             try:
                 success = await self.api.set_schedule(
                     self.device_id, self.slot, hour, minute, portions, enabled,
-                    flag=schedule.get("flag", "0"),
                     suffix=schedule.get("suffix", ""),
                 )
                 if not success:
