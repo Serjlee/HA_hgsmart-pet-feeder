@@ -9,10 +9,17 @@ from homeassistant.exceptions import (
     ConfigEntryNotReady,
     HomeAssistantError,
 )
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr
+import voluptuous as vol
 
 from .api import HGSmartApiClient, HGSmartConnectionError
-from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, CONF_REFRESH_TOKEN
+from .const import (
+    CONF_REFRESH_TOKEN,
+    CONF_UPDATE_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
+    WEEKDAYS,
+)
 from .coordinator import HGSmartDataUpdateCoordinator
 from .helpers import api_locale_from_hass, api_timezone_from_hass
 
@@ -20,7 +27,21 @@ _LOGGER = logging.getLogger(__name__)
 
 # Service constants
 SERVICE_FEED = "feed"
+SERVICE_SET_SCHEDULE_DAYS = "set_schedule_days"
 ATTR_PORTIONS = "portions"
+ATTR_SLOT = "slot"
+ATTR_DAYS = "days"
+
+SET_SCHEDULE_DAYS_SCHEMA = vol.Schema(
+    {
+        vol.Required("device_id"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Required(ATTR_SLOT): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+        vol.Required(ATTR_DAYS): vol.All(
+            cv.ensure_list, [vol.All(cv.string, vol.Lower, vol.In(WEEKDAYS))], vol.Length(min=1)
+        ),
+    },
+    extra=vol.ALLOW_EXTRA,
+)
 
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
@@ -29,6 +50,7 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SWITCH,
+    Platform.TEXT,
     Platform.TIME,
 ]
 
@@ -184,11 +206,53 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "Please select a device from the HGSmart integration."
             )
 
+    async def handle_set_schedule_days_service(call: ServiceCall) -> None:
+        """Set which local weekdays a schedule slot runs on (SF35 only)."""
+        slot = call.data[ATTR_SLOT] - 1  # entity names are 1-based
+        days = call.data[ATTR_DAYS]
+        dev_reg = dr.async_get(hass)
+
+        processed_any = False
+        for ha_device_id in call.data["device_id"]:
+            device = dev_reg.async_get(ha_device_id)
+            our_device_id = next(
+                (i[1] for i in device.identifiers if i[0] == DOMAIN), None
+            ) if device else None
+            if not our_device_id:
+                _LOGGER.warning("Device %s is not an HGSmart device - skipping", ha_device_id)
+                continue
+
+            coordinator = next(
+                (
+                    entry_data["coordinator"]
+                    for entry_data in hass.data[DOMAIN].values()
+                    if isinstance(entry_data, dict)
+                    and our_device_id in (entry_data["coordinator"].data or {})
+                ),
+                None,
+            )
+            if not coordinator:
+                raise HomeAssistantError(f"Device {our_device_id} is not loaded")
+
+            await coordinator.async_set_schedule_days(our_device_id, slot, days)
+            processed_any = True
+
+        if not processed_any:
+            raise HomeAssistantError("None of the selected devices are HGSmart feeders")
+
     if not hass.services.has_service(DOMAIN, SERVICE_FEED):
         hass.services.async_register(
             DOMAIN,
             SERVICE_FEED,
             handle_feed_service,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_SET_SCHEDULE_DAYS):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_SCHEDULE_DAYS,
+            handle_set_schedule_days_service,
+            schema=SET_SCHEDULE_DAYS_SCHEMA,
         )
 
     return True

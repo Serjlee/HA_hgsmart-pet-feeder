@@ -14,7 +14,7 @@ from homeassistant.util import dt as dt_util
 from .api import HGSmartApiClient
 from .const import DOMAIN, SCHEDULE_SLOTS
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import get_device_info
+from .helpers import get_device_info, shift_weekday_mask, utc_day_offset
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ async def async_setup_entry(
         device_info = device_data["device_info"]
 
         # Add schedule time entities for each slot
-        for slot in range(SCHEDULE_SLOTS):
+        for slot in range(device_data.get("schedule_slots", SCHEDULE_SLOTS)):
             entities.append(
                 HGSmartScheduleTime(hass, coordinator, api, device_id, device_info, slot)
             )
@@ -117,14 +117,26 @@ class HGSmartScheduleTime(CoordinatorEntity, TimeEntity):
 
             old_hour = schedule.get("hour")
             old_minute = schedule.get("minute")
+            old_suffix = schedule.get("suffix", "")
+
+            # SF35 weekday masks are in UTC days: if the new time lands on a
+            # different UTC day relative to local than the old one, shift it
+            old_offset = utc_day_offset(
+                old_hour if old_hour is not None else 8,
+                old_minute if old_minute is not None else 0,
+            )
+            new_offset = utc_day_offset(utc_hour, utc_minute)
+            suffix = shift_weekday_mask(old_suffix, new_offset - old_offset)
 
             self.coordinator.data[self.device_id]["schedules"][self.slot]["hour"] = utc_hour
             self.coordinator.data[self.device_id]["schedules"][self.slot]["minute"] = utc_minute
+            self.coordinator.data[self.device_id]["schedules"][self.slot]["suffix"] = suffix
             self.async_write_ha_state()
 
             try:
                 success = await self.api.set_schedule(
-                    self.device_id, self.slot, utc_hour, utc_minute, portions, enabled
+                    self.device_id, self.slot, utc_hour, utc_minute, portions, enabled,
+                    suffix=suffix,
                 )
                 if not success:
                     raise HomeAssistantError(
@@ -133,6 +145,7 @@ class HGSmartScheduleTime(CoordinatorEntity, TimeEntity):
             except Exception:
                 self.coordinator.data[self.device_id]["schedules"][self.slot]["hour"] = old_hour
                 self.coordinator.data[self.device_id]["schedules"][self.slot]["minute"] = old_minute
+                self.coordinator.data[self.device_id]["schedules"][self.slot]["suffix"] = old_suffix
                 self.async_write_ha_state()
                 raise
 

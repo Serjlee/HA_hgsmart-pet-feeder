@@ -14,6 +14,8 @@ from .api import HGSmartApiClient
 from .const import ATTR_CHILD, DOMAIN, SCHEDULE_SLOTS
 from .coordinator import HGSmartDataUpdateCoordinator
 from .helpers import (
+    has_weekday_mask,
+    mask_to_local_days,
     get_device_info,
     is_child_lock_active,
     read_child_lock_raw,
@@ -41,14 +43,17 @@ async def async_setup_entry(
         device_info = device_data["device_info"]
 
         # Add schedule enable switches for each slot
-        for slot in range(SCHEDULE_SLOTS):
+        for slot in range(device_data.get("schedule_slots", SCHEDULE_SLOTS)):
             entities.append(
                 HGSmartScheduleSwitch(coordinator, api, device_id, device_info, slot)
             )
 
-        entities.append(
-            HGSmartButtonLockoutSwitch(coordinator, api, device_id, device_info)
-        )
+        # SF35 has no button lockout; keep the switch if attributes failed to load
+        attributes = device_data.get("attributes")
+        if not attributes or ATTR_CHILD in attributes:
+            entities.append(
+                HGSmartButtonLockoutSwitch(coordinator, api, device_id, device_info)
+            )
 
     async_add_entities(entities)
 
@@ -73,6 +78,20 @@ class HGSmartScheduleSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_name = f"{device_info['name']} Schedule {slot + 1} Enabled"
         self._attr_icon = "mdi:calendar-clock"
         self._attr_device_info = get_device_info(device_id, device_info)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the local weekdays for models with weekly schedules (SF35)."""
+        device_data = self.coordinator.data.get(self.device_id) or {}
+        schedule = (device_data.get("schedules") or {}).get(self.slot) or {}
+        suffix = schedule.get("suffix", "")
+        if not has_weekday_mask(suffix):
+            return {}
+        return {
+            "days": mask_to_local_days(
+                suffix, schedule.get("hour", 8), schedule.get("minute", 0)
+            )
+        }
 
     @property
     def is_on(self) -> bool:
@@ -110,7 +129,8 @@ class HGSmartScheduleSwitch(CoordinatorEntity, SwitchEntity):
 
             try:
                 success = await self.api.set_schedule(
-                    self.device_id, self.slot, hour, minute, portions, enabled
+                    self.device_id, self.slot, hour, minute, portions, enabled,
+                    suffix=schedule.get("suffix", ""),
                 )
                 if not success:
                     raise HomeAssistantError(
