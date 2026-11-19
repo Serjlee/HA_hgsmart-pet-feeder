@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import HGSmartApiClient
 from .const import DOMAIN, MAX_PORTIONS, MIN_PORTIONS
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import get_device_info, get_max_schedule_portions
+from .helpers import get_device_info, get_max_schedule_portions, is_sf_model
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,10 +40,11 @@ async def async_setup_entry(
             HGSmartManualFeedPortions(hass, entry.entry_id, coordinator, device_id, device_info)
         )
 
-        # Add food remaining percentage entity
-        entities.append(
-            HGSmartFoodRemainingNumber(coordinator, api, device_id, device_info)
-        )
+        # Add food remaining percentage entity (not on SF feeders, see sensor.py)
+        if not is_sf_model(device_info):
+            entities.append(
+                HGSmartFoodRemainingNumber(coordinator, api, device_id, device_info)
+            )
 
         # Add schedule portions entities for each slot
         for slot in range(device_data["schedule_slots"]):

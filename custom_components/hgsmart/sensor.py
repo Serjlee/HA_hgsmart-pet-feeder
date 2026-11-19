@@ -15,7 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import get_device_info
+from .helpers import get_device_info, is_sf_model, parse_batinfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,10 +32,12 @@ async def async_setup_entry(
     for device_id, device_data in coordinator.data.items():
         device_info = device_data["device_info"]
         
-        # Add food remaining sensor
-        entities.append(
-            HGSmartFoodRemainingSensor(coordinator, device_id, device_info)
-        )
+        # SF feeders have no food level: "remaining" is the S-series refill
+        # estimate, which their app doesn't offer, so it would always read 0
+        if not is_sf_model(device_info):
+            entities.append(
+                HGSmartFoodRemainingSensor(coordinator, device_id, device_info)
+            )
         
         # Add desiccant expiry sensor
         entities.append(
@@ -194,6 +196,10 @@ class HGSmartBatteryLevelSensor(HGSmartSensorBase):
                     return int(electric)
                 except ValueError:
                     return None
+            # SF35 reports the level inside "batinfo" instead
+            batinfo = parse_batinfo(device_data["attributes"])
+            if batinfo:
+                return batinfo["level"]
         return None
 
 
