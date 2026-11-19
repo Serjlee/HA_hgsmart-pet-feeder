@@ -32,6 +32,9 @@ async def async_setup_entry(
         entities.append(HGSmartOnlineSensor(coordinator, device_id, device_info))
         entities.append(HGSmartBatterySensor(coordinator, device_id, device_info))
         attributes = device_data.get("attributes")
+        # SF35: lid state (absent on S-series)
+        if attributes and "capstatus" in attributes:
+            entities.append(HGSmartLidSensor(coordinator, device_id, device_info))
         # SF35: battery charging state (absent on S-series)
         if parse_batinfo(attributes) is not None:
             entities.append(HGSmartBatteryChargingSensor(coordinator, device_id, device_info))
@@ -160,4 +163,24 @@ class HGSmartBatteryChargingSensor(_HGSmartAttributeBinarySensor):
         """Return true while charging."""
         batinfo = parse_batinfo(self._attributes())
         return batinfo["charging"] if batinfo else None
+
+
+class HGSmartLidSensor(_HGSmartAttributeBinarySensor):
+    """On while the lid is open, i.e. a paired pet is at the bowl (SF35).
+
+    The cloud reflects lid changes within seconds, but HA only sees them at
+    the next poll, so short meals are missed with long update intervals.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.OPENING
+
+    def __init__(self, coordinator, device_id, device_info) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info, "lid", "Lid")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true while the lid is open."""
+        raw = str(self._attributes().get("capstatus", "")).strip()
+        return {"1": True, "0": False}.get(raw)
 
