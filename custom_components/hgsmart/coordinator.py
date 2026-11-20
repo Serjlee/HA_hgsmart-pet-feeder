@@ -140,10 +140,16 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                         slot: parse_plan_value(str(attributes.get(f"plan{slot}", "0")))
                         for slot in range(slot_count)
                     }
-                    # Empty slots copy the suffix format of a configured one,
-                    # so e.g. SF35 slots get a weekday mask when first enabled
-                    template = next(
-                        (p for p in parsed_plans.values() if p), None
+                    # Empty slots on weekly-schedule models need a mask to be
+                    # written back; default to every day
+                    empty_suffix = (
+                        "_1111111"
+                        if is_sf_model(device)
+                        or any(
+                            p and has_weekday_mask(p["suffix"])
+                            for p in parsed_plans.values()
+                        )
+                        else ""
                     )
                     for slot, parsed in parsed_plans.items():
                         if parsed:
@@ -156,12 +162,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                                 "minute": 0,
                                 "portions": 1,
                                 "slot": slot,
-                                "suffix": template["suffix"]
-                                if template
-                                # SF35 with no plans yet: default to every day
-                                else "_1111111"
-                                if is_sf_model(device)
-                                else "",
+                                "suffix": empty_suffix,
                             }
 
                 device_data[device_id] = {
