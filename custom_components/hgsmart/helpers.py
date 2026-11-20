@@ -59,6 +59,11 @@ def is_supported_model(device_info: dict[str, Any]) -> bool:
     return str(device_info.get("type", "")).startswith(SUPPORTED_MODEL_PREFIXES)
 
 
+def is_sf_model(device_info: dict[str, Any]) -> bool:
+    """Return True for SF-series models (e.g. SF35)."""
+    return str(device_info.get("type", "")).upper().startswith("SF")
+
+
 def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
     """Parse plan value string from API response.
 
@@ -171,7 +176,7 @@ def local_days_to_mask(days: list[str], utc_hour: int, utc_minute: int) -> str:
 
 def get_max_schedule_portions(device_info: dict[str, Any]) -> int:
     """Return the max portions per scheduled meal (SF35 allows 24)."""
-    if str(device_info.get("type", "")).upper().startswith("SF"):
+    if is_sf_model(device_info):
         return SF_MAX_SCHEDULE_PORTIONS
     return MAX_PORTIONS
 

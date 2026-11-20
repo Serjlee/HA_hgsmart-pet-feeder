@@ -13,6 +13,7 @@ from .const import DOMAIN
 from .helpers import (
     get_schedule_slot_count,
     has_weekday_mask,
+    is_sf_model,
     is_supported_model,
     local_days_to_mask,
     parse_plan_value,
@@ -159,7 +160,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                                 if template
                                 # SF35 with no plans yet: default to every day
                                 else "_1111111"
-                                if device["type"].upper().startswith("SF")
+                                if is_sf_model(device)
                                 else "",
                             }
 
