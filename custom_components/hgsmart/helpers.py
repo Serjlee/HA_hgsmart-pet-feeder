@@ -11,6 +11,7 @@ from .const import (
     ATTR_CHILD,
     DOMAIN,
     MAX_PORTIONS,
+    MAX_SCHEDULE_SLOTS,
     SCHEDULE_SLOTS,
     SF_MAX_SCHEDULE_PORTIONS,
     SUPPORTED_MODEL_PREFIXES,
@@ -181,17 +182,21 @@ def get_max_schedule_portions(device_info: dict[str, Any]) -> int:
     return MAX_PORTIONS
 
 
-def get_schedule_slot_count(attributes: dict[str, Any] | None) -> int:
+def get_schedule_slot_count(
+    device_info: dict[str, Any], attributes: dict[str, Any] | None
+) -> int:
     """Return how many schedule slots a device exposes.
 
-    S25/S30 report plan0-plan5; SF35 reports plan0-plan9. Slot IDs are a single
-    digit in the plan string, so cap at 10.
+    S25/S30 report plan0-plan5; SF35 reports plan0-plan9. SF models get all
+    slots even if attributes failed to load, so entities exist from startup.
     """
+    if is_sf_model(device_info):
+        return MAX_SCHEDULE_SLOTS
     count = SCHEDULE_SLOTS
     for key in attributes or {}:
         if key.startswith("plan") and key[4:].isdigit():
             count = max(count, int(key[4:]) + 1)
-    return min(count, 10)
+    return min(count, MAX_SCHEDULE_SLOTS)
 
 def read_child_lock_raw(device_data: dict[str, Any]) -> str | None:
     """Read child lock value from the attribute payload (GET /device/attribute)."""

@@ -18,6 +18,7 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    MAX_SCHEDULE_SLOTS,
     WEEKDAYS,
 )
 from .coordinator import HGSmartDataUpdateCoordinator
@@ -35,7 +36,7 @@ ATTR_DAYS = "days"
 SET_SCHEDULE_DAYS_SCHEMA = vol.Schema(
     {
         vol.Required("device_id"): vol.All(cv.ensure_list, [cv.string]),
-        vol.Required(ATTR_SLOT): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+        vol.Required(ATTR_SLOT): vol.All(vol.Coerce(int), vol.Range(min=1, max=MAX_SCHEDULE_SLOTS)),
         vol.Required(ATTR_DAYS): vol.All(
             cv.ensure_list, [vol.All(cv.string, vol.Lower, vol.In(WEEKDAYS))], vol.Length(min=1)
         ),

@@ -134,7 +134,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
 
                 # Parse schedule slots from attributes
                 schedules = {}
-                slot_count = get_schedule_slot_count(attributes)
+                slot_count = get_schedule_slot_count(device, attributes)
                 if attributes:
                     parsed_plans = {
                         slot: parse_plan_value(str(attributes.get(f"plan{slot}", "0")))
