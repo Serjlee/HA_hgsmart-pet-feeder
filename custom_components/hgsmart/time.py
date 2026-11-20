@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .api import HGSmartApiClient
-from .const import DOMAIN, SCHEDULE_SLOTS
+from .const import DOMAIN
 from .coordinator import HGSmartDataUpdateCoordinator
 from .helpers import get_device_info, shift_weekday_mask, utc_day_offset
 
@@ -35,7 +35,7 @@ async def async_setup_entry(
         device_info = device_data["device_info"]
 
         # Add schedule time entities for each slot
-        for slot in range(device_data.get("schedule_slots", SCHEDULE_SLOTS)):
+        for slot in range(device_data["schedule_slots"]):
             entities.append(
                 HGSmartScheduleTime(hass, coordinator, api, device_id, device_info, slot)
             )

@@ -12,7 +12,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import HGSmartApiClient
-from .const import DOMAIN, MAX_PORTIONS, MIN_PORTIONS, SCHEDULE_SLOTS
+from .const import DOMAIN, MAX_PORTIONS, MIN_PORTIONS
 from .coordinator import HGSmartDataUpdateCoordinator
 from .helpers import get_device_info, get_max_schedule_portions
 
@@ -46,7 +46,7 @@ async def async_setup_entry(
         )
 
         # Add schedule portions entities for each slot
-        for slot in range(device_data.get("schedule_slots", SCHEDULE_SLOTS)):
+        for slot in range(device_data["schedule_slots"]):
             entities.append(
                 HGSmartSchedulePortions(coordinator, api, device_id, device_info, slot)
             )

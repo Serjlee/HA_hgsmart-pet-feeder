@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import HGSmartApiClient
-from .const import ATTR_CHILD, DOMAIN, SCHEDULE_SLOTS
+from .const import ATTR_CHILD, DOMAIN
 from .coordinator import HGSmartDataUpdateCoordinator
 from .helpers import (
     has_weekday_mask,
@@ -43,7 +43,7 @@ async def async_setup_entry(
         device_info = device_data["device_info"]
 
         # Add schedule enable switches for each slot
-        for slot in range(device_data.get("schedule_slots", SCHEDULE_SLOTS)):
+        for slot in range(device_data["schedule_slots"]):
             entities.append(
                 HGSmartScheduleSwitch(coordinator, api, device_id, device_info, slot)
             )
