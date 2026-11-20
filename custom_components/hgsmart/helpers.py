@@ -100,7 +100,7 @@ def parse_plan_value(plan_value: str) -> ScheduleSlotData | None:
             )
             return None
 
-        if portions == 0:
+        if portions == 0 or status in (2, 3):
             return None
 
         return {
