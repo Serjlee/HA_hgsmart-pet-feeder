@@ -136,10 +136,9 @@ def shift_weekday_mask(suffix: str, days: int) -> str:
     The mask is in UTC days, so it must move when a time change makes the
     schedule cross midnight UTC. Other suffixes are returned unchanged.
     """
-    mask = suffix[1:]
-    if days % 7 == 0 or not suffix.startswith("_") or len(mask) != 7:
+    if days % 7 == 0 or not has_weekday_mask(suffix):
         return suffix
-    return "_" + "".join(mask[(i - days) % 7] for i in range(7))
+    return "_" + "".join(suffix[1 + (i - days) % 7] for i in range(7))
 
 
 def has_weekday_mask(suffix: str | None) -> bool:
