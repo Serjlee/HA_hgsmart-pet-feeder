@@ -6,15 +6,14 @@ from typing import Any
 from homeassistant.components.time import TimeEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .api import HGSmartApiClient
-from .const import DOMAIN, SCHEDULE_SLOTS
+from .const import DOMAIN
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import get_device_info
+from .helpers import get_device_info, shift_weekday_mask, utc_day_offset
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ async def async_setup_entry(
         device_info = device_data["device_info"]
 
         # Add schedule time entities for each slot
-        for slot in range(SCHEDULE_SLOTS):
+        for slot in range(device_data["schedule_slots"]):
             entities.append(
                 HGSmartScheduleTime(hass, coordinator, api, device_id, device_info, slot)
             )
@@ -87,54 +86,35 @@ class HGSmartScheduleTime(CoordinatorEntity, TimeEntity):
 
     async def async_set_value(self, value: dt_time) -> None:
         """Set the time value (converts local to UTC for API)."""
-        async with self.coordinator.get_schedule_lock(self.device_id, self.slot):
-            device_data = self.coordinator.data.get(self.device_id)
-            if not device_data or not device_data.get("schedules"):
-                raise HomeAssistantError("Device data not available")
+        local_dt = dt_util.now().replace(
+            hour=value.hour, minute=value.minute, second=0, microsecond=0
+        )
+        utc_dt = dt_util.as_utc(local_dt)
+        utc_hour = utc_dt.hour
+        utc_minute = utc_dt.minute
 
-            schedule = device_data["schedules"].get(self.slot, {})
-            enabled = schedule.get("enabled", False)
-            portions = schedule.get("portions", 1)
+        _LOGGER.debug(
+            "Setting schedule %d time: local %02d:%02d -> UTC %02d:%02d",
+            self.slot,
+            value.hour,
+            value.minute,
+            utc_hour,
+            utc_minute,
+        )
 
-            # Convert local time to UTC
-            now = dt_util.now()
-            local_dt = now.replace(
-                hour=value.hour, minute=value.minute, second=0, microsecond=0
+        def update(schedule: dict[str, Any]) -> dict[str, Any]:
+            # SF35 weekday masks are in UTC days: if the new time lands on a
+            # different UTC day relative to local than the old one, shift it
+            shift = utc_day_offset(utc_hour, utc_minute) - utc_day_offset(
+                schedule["hour"], schedule["minute"]
             )
-            utc_dt = dt_util.as_utc(local_dt)
+            return {
+                "hour": utc_hour,
+                "minute": utc_minute,
+                "suffix": shift_weekday_mask(schedule["suffix"], shift),
+            }
 
-            utc_hour = utc_dt.hour
-            utc_minute = utc_dt.minute
-
-            _LOGGER.debug(
-                "Setting schedule %d time: local %02d:%02d -> UTC %02d:%02d",
-                self.slot,
-                value.hour,
-                value.minute,
-                utc_hour,
-                utc_minute,
-            )
-
-            old_hour = schedule.get("hour")
-            old_minute = schedule.get("minute")
-
-            self.coordinator.data[self.device_id]["schedules"][self.slot]["hour"] = utc_hour
-            self.coordinator.data[self.device_id]["schedules"][self.slot]["minute"] = utc_minute
-            self.async_write_ha_state()
-
-            try:
-                success = await self.api.set_schedule(
-                    self.device_id, self.slot, utc_hour, utc_minute, portions, enabled
-                )
-                if not success:
-                    raise HomeAssistantError(
-                        f"Failed to set schedule time for slot {self.slot}"
-                    )
-            except Exception:
-                self.coordinator.data[self.device_id]["schedules"][self.slot]["hour"] = old_hour
-                self.coordinator.data[self.device_id]["schedules"][self.slot]["minute"] = old_minute
-                self.async_write_ha_state()
-                raise
+        await self.coordinator.async_update_schedule(self.device_id, self.slot, update)
 
     @property
     def available(self) -> bool:

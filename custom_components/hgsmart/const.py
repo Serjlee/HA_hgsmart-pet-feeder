@@ -15,8 +15,11 @@ DEFAULT_UPDATE_INTERVAL = 15
 
 # Schedule configuration
 SCHEDULE_SLOTS = 6  # Slots numbered 0-5
+MAX_SCHEDULE_SLOTS = 10  # Slot ID is one digit in the plan string; SF35 uses all
+WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]  # SF35 mask order
 MIN_PORTIONS = 1
 MAX_PORTIONS = 9
+SF_MAX_SCHEDULE_PORTIONS = 24  # SF35 scheduled meals
 
 # Meal call sound (device attribute identifiers: music, choosevoice)
 MEAL_CALL_OPTION_DEFAULT = "Default"

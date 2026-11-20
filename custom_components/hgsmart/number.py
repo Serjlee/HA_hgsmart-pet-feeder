@@ -12,9 +12,9 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import HGSmartApiClient
-from .const import DOMAIN, MAX_PORTIONS, MIN_PORTIONS, SCHEDULE_SLOTS
+from .const import DOMAIN, MAX_PORTIONS, MIN_PORTIONS
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import get_device_info
+from .helpers import get_device_info, get_max_schedule_portions
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ async def async_setup_entry(
         )
 
         # Add schedule portions entities for each slot
-        for slot in range(SCHEDULE_SLOTS):
+        for slot in range(device_data["schedule_slots"]):
             entities.append(
                 HGSmartSchedulePortions(coordinator, api, device_id, device_info, slot)
             )
@@ -190,7 +190,7 @@ class HGSmartSchedulePortions(CoordinatorEntity, NumberEntity):
         self._attr_name = f"{device_info['name']} Schedule {slot + 1} Portions"
         self._attr_icon = "mdi:food"
         self._attr_native_min_value = MIN_PORTIONS
-        self._attr_native_max_value = MAX_PORTIONS
+        self._attr_native_max_value = get_max_schedule_portions(device_info)
         self._attr_native_step = 1
         self._attr_mode = NumberMode.BOX
         self._attr_device_info = get_device_info(device_id, device_info)
@@ -207,36 +207,10 @@ class HGSmartSchedulePortions(CoordinatorEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the portions value."""
-        async with self.coordinator.get_schedule_lock(self.device_id, self.slot):
-            device_data = self.coordinator.data.get(self.device_id)
-            if not device_data or not device_data.get("schedules"):
-                raise HomeAssistantError("Device data not available")
-
-            schedule = device_data["schedules"].get(self.slot, {})
-            enabled = schedule.get("enabled", False)
-            hour = schedule.get("hour", 8)
-            minute = schedule.get("minute", 0)
-            old_portions = schedule.get("portions")
-
-            portions = int(value)
-
-            self.coordinator.data[self.device_id]["schedules"][self.slot]["portions"] = portions
-            self.async_write_ha_state()
-
-            try:
-                success = await self.api.set_schedule(
-                    self.device_id, self.slot, hour, minute, portions, enabled
-                )
-                if not success:
-                    raise HomeAssistantError(
-                        f"Failed to set portions for schedule slot {self.slot}"
-                    )
-            except Exception:
-                self.coordinator.data[self.device_id]["schedules"][self.slot]["portions"] = old_portions
-                self.async_write_ha_state()
-                raise
-
-            await self.coordinator.async_request_refresh()
+        await self.coordinator.async_update_schedule(
+            self.device_id, self.slot, lambda _: {"portions": int(value)}
+        )
+        await self.coordinator.async_request_refresh()
 
     @property
     def available(self) -> bool:

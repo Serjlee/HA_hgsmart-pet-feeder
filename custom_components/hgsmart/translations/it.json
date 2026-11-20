@@ -46,6 +46,24 @@
           "description": "Numero di porzioni da erogare (1-9)."
         }
       }
+    },
+    "set_schedule_days": {
+      "name": "Imposta giorni programmazione",
+      "description": "Imposta in quali giorni della settimana viene eseguita una programmazione (solo SF35).",
+      "fields": {
+        "device_id": {
+          "name": "Dispositivo",
+          "description": "Il distributore di cibo."
+        },
+        "slot": {
+          "name": "Programmazione",
+          "description": "Numero della programmazione, come nei nomi delle entità (1-10)."
+        },
+        "days": {
+          "name": "Giorni",
+          "description": "Giorni della settimana (ora locale) in cui eseguire la programmazione."
+        }
+      }
     }
   }
 }

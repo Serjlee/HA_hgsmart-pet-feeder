@@ -46,6 +46,24 @@
           "description": "Number of portions to dispense (1-9)."
         }
       }
+    },
+    "set_schedule_days": {
+      "name": "Set schedule days",
+      "description": "Set which weekdays a schedule slot runs on (SF35 only).",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "The pet feeder device."
+        },
+        "slot": {
+          "name": "Schedule",
+          "description": "Schedule slot number, as shown in entity names (1-10)."
+        },
+        "days": {
+          "name": "Days",
+          "description": "Local weekdays the schedule should run on."
+        }
+      }
     }
   }
 }
