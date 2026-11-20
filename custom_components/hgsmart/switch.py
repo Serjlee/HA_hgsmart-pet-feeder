@@ -113,33 +113,9 @@ class HGSmartScheduleSwitch(CoordinatorEntity, SwitchEntity):
 
     async def _set_enabled(self, enabled: bool) -> None:
         """Set the enabled state of the schedule slot."""
-        async with self.coordinator.get_schedule_lock(self.device_id, self.slot):
-            device_data = self.coordinator.data.get(self.device_id)
-            if not device_data or not device_data.get("schedules"):
-                raise HomeAssistantError("Device data not available")
-
-            schedule = device_data["schedules"].get(self.slot, {})
-            hour = schedule.get("hour", 8)
-            minute = schedule.get("minute", 0)
-            portions = schedule.get("portions", 1)
-            old_enabled = schedule.get("enabled")
-
-            self.coordinator.data[self.device_id]["schedules"][self.slot]["enabled"] = enabled
-            self.async_write_ha_state()
-
-            try:
-                success = await self.api.set_schedule(
-                    self.device_id, self.slot, hour, minute, portions, enabled,
-                    suffix=schedule.get("suffix", ""),
-                )
-                if not success:
-                    raise HomeAssistantError(
-                        f"Failed to {'enable' if enabled else 'disable'} schedule slot {self.slot}"
-                    )
-            except Exception:
-                self.coordinator.data[self.device_id]["schedules"][self.slot]["enabled"] = old_enabled
-                self.async_write_ha_state()
-                raise
+        await self.coordinator.async_update_schedule(
+            self.device_id, self.slot, lambda _: {"enabled": enabled}
+        )
 
     @property
     def available(self) -> bool:

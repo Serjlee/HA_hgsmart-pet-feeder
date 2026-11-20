@@ -1,5 +1,6 @@
 """Data update coordinator for HGSmart Pet Feeder."""
 import asyncio
+from collections.abc import Callable
 from datetime import timedelta
 import logging
 from typing import Any
@@ -44,24 +45,28 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
             self._schedule_locks[key] = asyncio.Lock()
         return self._schedule_locks[key]
 
-    async def async_set_schedule_days(
-        self, device_id: str, slot: int, days: list[str]
+    async def async_update_schedule(
+        self,
+        device_id: str,
+        slot: int,
+        update: Callable[[dict[str, Any]], dict[str, Any]],
     ) -> None:
-        """Set the local weekdays a schedule slot runs on (SF35 weekday mask)."""
+        """Apply update(schedule) optimistically and write the slot to the device.
+
+        update runs under the slot lock so it sees the latest schedule. The
+        change is rolled back if the write fails.
+        """
         async with self.get_schedule_lock(device_id, slot):
             device_data = (self.data or {}).get(device_id)
             if not device_data:
                 raise HomeAssistantError(f"Device {device_id} is not loaded")
             name = device_data["device_info"].get("name", device_id)
-            schedule = device_data.get("schedules", {}).get(slot)
+            schedule = device_data["schedules"].get(slot)
             if not schedule:
                 raise HomeAssistantError(f"{name} has no schedule {slot + 1}")
-            if not has_weekday_mask(schedule.get("suffix")):
-                raise HomeAssistantError(f"{name} does not support weekly schedules")
 
-            old_suffix = schedule["suffix"]
-            suffix = local_days_to_mask(days, schedule["hour"], schedule["minute"])
-            schedule["suffix"] = suffix
+            old = dict(schedule)
+            schedule.update(update(schedule))
             self.async_update_listeners()
             try:
                 success = await self.api.set_schedule(
@@ -71,16 +76,32 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                     schedule["minute"],
                     schedule["portions"],
                     schedule["enabled"],
-                    suffix=suffix,
+                    suffix=schedule["suffix"],
                 )
                 if not success:
                     raise HomeAssistantError(
-                        f"Failed to set days for schedule {slot + 1} on {name}"
+                        f"Failed to update schedule {slot + 1} on {name}"
                     )
             except Exception:
-                schedule["suffix"] = old_suffix
+                schedule.update(old)
                 self.async_update_listeners()
                 raise
+
+    async def async_set_schedule_days(
+        self, device_id: str, slot: int, days: list[str]
+    ) -> None:
+        """Set the local weekdays a schedule slot runs on (SF35 weekday mask)."""
+
+        def update(schedule: dict[str, Any]) -> dict[str, Any]:
+            if not has_weekday_mask(schedule["suffix"]):
+                raise HomeAssistantError(
+                    f"Schedule {slot + 1} does not support weekly schedules"
+                )
+            return {
+                "suffix": local_days_to_mask(days, schedule["hour"], schedule["minute"])
+            }
+
+        await self.async_update_schedule(device_id, slot, update)
         await self.async_request_refresh()
 
     async def _async_update_data(self) -> dict[str, Any]:
