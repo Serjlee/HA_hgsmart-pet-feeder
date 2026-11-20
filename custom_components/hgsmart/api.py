@@ -5,6 +5,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
@@ -379,10 +380,10 @@ class HGSmartApiClient:
         spoofed_uuid = uuid.uuid1(node=0x8DD711617773, clock_seq=0x8697)
         message_id = spoofed_uuid.hex
 
-        current_minute = time.localtime().tm_min
-        minute_hex = f"{current_minute:02x}"
-        portions_hex = f"{portions:02x}"
-        command_value = f"0120{minute_hex}{portions_hex}"
+        # "01" + UTC hour + minute + portions, 2-digit decimal: the same frame
+        # format the feeder reports in userfoodframe / autofoodframe.
+        now_utc = datetime.now(timezone.utc)
+        command_value = f"01{now_utc.hour:02d}{now_utc.minute:02d}{portions:02d}"
 
         payload_dict = {
             "ctrl": {"identifier": "userfoodframe", "value": command_value},
