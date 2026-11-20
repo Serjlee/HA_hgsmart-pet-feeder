@@ -227,6 +227,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     entry_data["coordinator"]
                     for entry_data in hass.data[DOMAIN].values()
                     if isinstance(entry_data, dict)
+                    and "coordinator" in entry_data
                     and our_device_id in (entry_data["coordinator"].data or {})
                 ),
                 None,
