@@ -1,1 +1,3 @@
 pytest-homeassistant==2026.11.3
+# Required by Home Assistant's FFmpeg integration for the audio services.
+ha-ffmpeg==3.2.2

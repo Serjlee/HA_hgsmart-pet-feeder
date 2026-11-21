@@ -13,6 +13,8 @@ This integration was developed through reverse engineering of the HGSmart Androi
 - Service for custom integrations / schedules (but you'll need to trust the HGSmart APIs and the pet feeder Wi-Fi connectivity)
 - Eating sensors for supported devices
 - Event logs
+- Custom meal-call sound upload from Home Assistant media
+
 ## Automatic timezone compensation
 
 In the integration's **Configure** options, enable **Automatically compensate for
@@ -37,6 +39,37 @@ HA and the HGSmart cloud must be available to apply changes; the feeder continue
 to use its previous schedules until compensation succeeds. Manual time changes
 in HA use the current offset and become the reference for that slot. Avoid editing
 the same schedules in the official app while compensation is pending.
+
+## Custom meal-call sound
+
+Use the `hgsmart.upload_sound` action and select an audio file from Home
+Assistant media. The integration converts it to the feeder's PCM 16-bit,
+22.05 kHz mono WAV format, uploads it to HGSmart, and transfers it to the feeder
+over the local network.
+
+Home Assistant and the feeder must be on the same LAN. When the device data
+contains a local IP, the integration uses it automatically. Otherwise, fill in
+the optional **Host** field with the feeder's reserved DHCP address (for example
+`192.168.1.42`); TCP port 3333 is used by default. Like the official app, the
+selected recording is trimmed automatically to ten seconds of useful audio.
+The conversion adds 250 ms of digital silence before and after it, outside that
+ten-second limit, so the speaker fade affects the padding rather than the sound.
+
+The optional **Volume** field uses a percentage: `100%` preserves the source,
+`25%` uses one quarter of its amplitude, and values up to `200%` can amplify it.
+Amplification above `100%` is passed through a limiter to prevent clipping.
+
+Use `hgsmart.mute_meal_call` to silence scheduled meals without selecting an
+audio file. It installs a precomputed 46-byte WAV containing one zero-amplitude
+sample—the shortest valid non-empty sound in this PCM format.
+
+The reverse-engineered protocol and current hardware-validation status are
+documented in [docs/audio-upload-protocol.md](docs/audio-upload-protocol.md).
+
+For hardware tests without Home Assistant, use the deliberately limited
+[`tools/upload_sound.py`](tools/upload_sound.py) utility. It implements sound
+upload only; it neither exposes nor calls a feeding operation. See
+[`tools/README.md`](tools/README.md) for setup and usage.
 
 ## Example cards
 
