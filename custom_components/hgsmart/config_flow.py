@@ -4,13 +4,18 @@ from typing import Any
 
 import aiohttp
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.data_entry_flow import FlowResult
 
 from .api import HGSmartApiClient
-from .const import DOMAIN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, CONF_REFRESH_TOKEN
+from .const import (
+    CONF_COMPENSATE_TIMEZONE_OFFSET,
+    CONF_REFRESH_TOKEN,
+    CONF_UPDATE_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
+)
 from .helpers import is_supported_model
 
 _LOGGER = logging.getLogger(__name__)
@@ -198,6 +203,12 @@ class HGSmartOptionsFlow(config_entries.OptionsFlow):
                     vol.Required(CONF_UPDATE_INTERVAL, default=current_interval): vol.All(
                         int, vol.Range(min=1, max=1440)
                     ),
+                    vol.Required(
+                        CONF_COMPENSATE_TIMEZONE_OFFSET,
+                        default=self.config_entry.options.get(
+                            CONF_COMPENSATE_TIMEZONE_OFFSET, False
+                        ),
+                    ): bool,
                 }
             ),
         )

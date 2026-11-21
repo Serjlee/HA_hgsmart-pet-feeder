@@ -114,7 +114,12 @@ class HGSmartScheduleTime(CoordinatorEntity, TimeEntity):
                 "suffix": shift_weekday_mask(schedule["suffix"], shift),
             }
 
-        await self.coordinator.async_update_schedule(self.device_id, self.slot, update)
+        await self.coordinator.async_update_schedule(
+            self.device_id,
+            self.slot,
+            update,
+            record_time_offset=True,
+        )
 
     @property
     def available(self) -> bool:
