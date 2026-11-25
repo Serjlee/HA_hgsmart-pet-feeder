@@ -48,6 +48,8 @@ async def async_setup_entry(
         )
 
         model = str(device_info.get("type", "")).upper()
+        # SF-series (RFID) feeders report their single bowl as type "0"
+        single_bowl_type = "0" if model.startswith("SF") else "1"
         if model.startswith("S"):
             model = model[1:]
         hopper_type = model[0] if len(model) >= 1 else "1"
@@ -70,10 +72,10 @@ async def async_setup_entry(
                 )
             else:
                 entities.append(
-                    HGSmartEatingCountSensor(coordinator, device_id, device_info, None, "1")
+                    HGSmartEatingCountSensor(coordinator, device_id, device_info, None, single_bowl_type)
                 )
                 entities.append(
-                    HGSmartEatingDurationSensor(coordinator, device_id, device_info, None, "1")
+                    HGSmartEatingDurationSensor(coordinator, device_id, device_info, None, single_bowl_type)
                 )
 
         # Add today's events sensor
