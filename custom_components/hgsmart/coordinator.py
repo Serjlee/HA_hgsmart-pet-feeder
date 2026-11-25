@@ -3,6 +3,7 @@ import asyncio
 from collections.abc import Callable
 import logging
 from datetime import timedelta
+import time
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
@@ -26,6 +27,12 @@ if TYPE_CHECKING:
     from .schedule_offsets import HGSmartScheduleOffsets
 
 _LOGGER = logging.getLogger(__name__)
+
+# The cloud attribute endpoint lags a successful plan write by a second or
+# two. Until it reports what was written (or this many seconds pass), refreshes
+# keep the written slot instead of the stale one; otherwise the next write to
+# the same slot is built from old data and undoes the previous change.
+PENDING_SCHEDULE_TTL = 60
 
 
 def _merge_schedule_snapshot(
@@ -66,6 +73,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
         self._schedule_locks: dict[str, asyncio.Lock] = {}
         self._schedule_revisions: dict[str, int] = {}
         self._warned_unsupported: set[str] = set()
+        self._pending_schedules: dict[tuple[str, int], tuple[float, dict[str, Any]]] = {}
 
     def get_schedule_lock(self, device_id: str) -> asyncio.Lock:
         """Serialize schedule writes against the device's shared snapshot."""
@@ -117,6 +125,7 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                 schedule.update(old)
                 self.async_update_listeners()
                 raise
+            self._pending_schedules[(device_id, slot)] = (time.monotonic(), dict(schedule))
 
             # Keep the raw plan consistent with the optimistic schedule. A
             # concurrent poll may have replaced the containing device dict.
@@ -139,6 +148,41 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                     await self.schedule_offsets.async_record_weekdays(
                         device_id, slot, schedule
                     )
+
+    def _apply_pending_schedule(
+        self, device_id: str, slot: int, fetched: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Return the written schedule if the cloud still reports an older one."""
+        pending = self._pending_schedules.get((device_id, slot))
+        if pending is None:
+            return fetched
+        written_at, expected = pending
+
+        def plan(schedule: dict[str, Any]) -> str:
+            return build_plan_value(
+                schedule["hour"],
+                schedule["minute"],
+                schedule["portions"],
+                slot,
+                schedule["enabled"],
+                schedule.get("suffix", ""),
+            )
+
+        if plan(fetched) == plan(expected):
+            del self._pending_schedules[(device_id, slot)]
+            return fetched
+        if time.monotonic() - written_at > PENDING_SCHEDULE_TTL:
+            _LOGGER.warning(
+                "Schedule %d on %s still reads %s, not the %s written %ds ago",
+                slot + 1,
+                device_id,
+                plan(fetched),
+                plan(expected),
+                PENDING_SCHEDULE_TTL,
+            )
+            del self._pending_schedules[(device_id, slot)]
+            return fetched
+        return dict(expected)
 
     async def async_set_schedule_days(
         self, device_id: str, slot: int, days: list[str]
@@ -264,10 +308,25 @@ class HGSmartDataUpdateCoordinator(DataUpdateCoordinator):
                 if not isinstance(attributes, dict):
                     attributes = None
 
+                snapshot = self._schedule_snapshot(device, attributes)
+                for slot, fetched in snapshot["schedules"].items():
+                    schedule = self._apply_pending_schedule(device_id, slot, fetched)
+                    if schedule is not fetched:
+                        # Keep the raw plan in step for timezone compensation.
+                        snapshot["schedules"][slot] = schedule
+                        snapshot["attributes"][f"plan{slot}"] = build_plan_value(
+                            schedule["hour"],
+                            schedule["minute"],
+                            schedule["portions"],
+                            slot,
+                            schedule["enabled"],
+                            schedule.get("suffix", ""),
+                        )
+
                 device_data[device_id] = {
                     "device_info": device,
                     "stats": stats or {},
-                    **self._schedule_snapshot(device, attributes),
+                    **snapshot,
                     "today_events": today_events
                     or {"events": [], "total": 0},
                 }
