@@ -15,6 +15,7 @@ from custom_components.hgsmart.api import (
     HGSmartAuthError,
     HGSmartConnectionError,
 )
+from custom_components.hgsmart.audio import SILENT_WAV
 from custom_components.hgsmart.const import CLIENT_ID, CLIENT_SECRET
 
 DEVICE = "dev1"
@@ -29,6 +30,7 @@ class Request:
     headers: dict[str, str]
     json: Any = None
     command: dict[str, Any] | None = None  # multipart "command" field, decoded
+    voice_file: tuple[str, str, bytes] | None = None
     content_type: str = ""
 
 
@@ -58,7 +60,15 @@ class FakeHGSmart:
             recorded.json = await request.json()
         elif request.content_type == "multipart/form-data":
             form = await request.post()
-            recorded.command = json.loads(form["command"])
+            if "command" in form:
+                recorded.command = json.loads(form["command"])
+            if "voiceFile" in form:
+                voice_file = form["voiceFile"]
+                recorded.voice_file = (
+                    voice_file.filename,
+                    voice_file.content_type,
+                    voice_file.file.read(),
+                )
         self.requests.append(recorded)
 
         if not request.path.startswith("/oauth/") and (
@@ -365,6 +375,42 @@ async def test_meal_call_sound_stops_after_a_failed_step(cloud, client):
     cloud.reply("PUT", f"/app/device/attribute/{DEVICE}", {"code": 500, "msg": "offline"})
     assert not await client.set_meal_call_sound_mode(DEVICE, True)
     assert len(cloud.requests) == 1
+
+
+async def test_voice_transfer_commands(cloud, client):
+    url = "https://example.invalid/recording.wav"
+    assert await client.set_custom_voice_url(DEVICE, url)
+    assert await client.prepare_custom_voice_transfer(DEVICE)
+    assert await client.finish_custom_voice_transfer(DEVICE)
+    assert await client.activate_custom_voice(DEVICE)
+
+    for request, (identifier, value) in zip(
+        cloud.requests,
+        [("getmusic", url), ("music", "1"), ("music", "0"), ("choosevoice", "1")],
+        strict=True,
+    ):
+        assert_command(request, identifier, value)
+
+
+async def test_voice_upload_resends_multipart_file_after_refresh(cloud, client):
+    url = "https://example.invalid/recording.wav"
+    path = "/app/device/uploadVoiceFile"
+    cloud.access_token = "access-2"
+    cloud.reply("POST", "/oauth/refreshToken", {"code": 200, "data": TOKENS})
+    cloud.reply("POST", path, {"code": 200, "data": {"voiceUrl": url}})
+
+    assert await client.upload_voice_file(SILENT_WAV, "recording.wav") == url
+    assert cloud.paths() == [f"POST {path}", "POST /oauth/refreshToken", f"POST {path}"]
+    original, _, retry = cloud.requests
+    for request in (original, retry):
+        assert request.content_type == "multipart/form-data"
+        assert request.voice_file == ("recording.wav", "audio/wav", SILENT_WAV)
+    assert retry.headers["Authorization"] == "Bearer access-2"
+
+
+async def test_voice_upload_requires_a_url(cloud, client):
+    cloud.reply("POST", "/app/device/uploadVoiceFile", {"code": 200, "data": {}})
+    assert await client.upload_voice_file(SILENT_WAV) is None
 
 
 async def test_reset_desiccant(cloud, client):
