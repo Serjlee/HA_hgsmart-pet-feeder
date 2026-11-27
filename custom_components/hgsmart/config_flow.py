@@ -6,7 +6,7 @@ import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.data_entry_flow import AbortFlow, FlowResult
 
 from .api import HGSmartApiClient
 from .const import (
@@ -96,6 +96,8 @@ class HGSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except TimeoutError:
                 _LOGGER.exception("Timeout during login")
                 errors["base"] = "cannot_connect"
+            except AbortFlow:
+                raise
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception during login")
                 errors["base"] = "unknown"
