@@ -290,6 +290,12 @@ async def test_reads(cloud, client):
     assert cloud.requests[-1].headers["Authorization"] == "Bearer access-1"
 
 
+@pytest.mark.parametrize("data", [None, {"deviceId": DEVICE}])
+async def test_devices_without_a_list(cloud, client, data):
+    cloud.reply("GET", "/app/device/list", {"code": 200, "data": data})
+    assert await client.get_devices() == []
+
+
 async def test_today_events_without_a_list(cloud, client):
     cloud.reply("GET", f"/app/device/today/{DEVICE}", {"code": 200, "data": None})
     assert await client.get_device_today_events(DEVICE) == {"events": [], "total": 0}

@@ -260,9 +260,8 @@ class HGSmartApiClient:
         """Get list of all devices."""
         url = f"{BASE_URL}/app/device/list"
         data = await self._request("GET", url)
-        if data:
-            return data.get("data", [])
-        return []
+        devices = data.get("data") if data else None
+        return devices if isinstance(devices, list) else []
 
     async def get_feeder_stats(self, device_id: str) -> dict[str, Any] | None:
         """GET /app/device/feeder/summary/{device_id} — feeder summary.
