@@ -3,7 +3,6 @@
 import asyncio
 from copy import deepcopy
 from datetime import datetime, time, timedelta, timezone
-from unittest.mock import create_autospec
 
 import pytest
 import voluptuous as vol
@@ -12,7 +11,6 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.storage import WriteError
 from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
 
-from custom_components.hgsmart.api import HGSmartApiClient
 from custom_components.hgsmart.const import CONF_COMPENSATE_TIMEZONE_OFFSET, DOMAIN
 from custom_components.hgsmart.coordinator import HGSmartDataUpdateCoordinator
 from custom_components.hgsmart.helpers import build_plan_value, parse_plan_value
@@ -29,39 +27,6 @@ ENTRY_ID = "offset-entry"
 MONDAY = "_1000000"
 TUESDAY = "_0100000"
 SUNDAY = "_0000001"
-
-
-class Cloud:
-    """Provide schedule snapshots and apply commands to simulated devices."""
-
-    def __init__(self):
-        self.devices = {FEEDER: {"deviceId": FEEDER, "name": "Feeder", "type": "S30D"}}
-        self.attributes = {FEEDER: {"plan0": build_plan_value(18, 30, 2, 0)}}
-        self.api = create_autospec(HGSmartApiClient, instance=True)
-        self.api.authenticate.return_value = True
-        self.api.get_devices.side_effect = lambda: deepcopy(list(self.devices.values()))
-        self.api.get_feeder_stats.return_value = None
-        self.api.get_device_today_events.return_value = None
-        self.api.get_device_attributes.side_effect = self.read
-        self.api.set_schedule.side_effect = self.write
-
-    async def read(self, device):
-        return deepcopy(self.attributes[device])
-
-    async def write(self, device, slot, hour, minute, portions, enabled, suffix=""):
-        self.attributes[device][f"plan{slot}"] = build_plan_value(
-            hour, minute, portions, slot, enabled, suffix
-        )
-        return True
-
-
-@pytest.fixture
-def cloud(monkeypatch):
-    cloud = Cloud()
-    monkeypatch.setattr(
-        "custom_components.hgsmart.HGSmartApiClient", lambda *args, **kwargs: cloud.api
-    )
-    return cloud
 
 
 @pytest.fixture
