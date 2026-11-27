@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
@@ -13,11 +14,13 @@ from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import HGSmartDataUpdateCoordinator
 from .helpers import (
     get_device_info,
+    has_weekday_mask,
     is_sf_model,
     parse_auto_feed_frame,
     parse_batinfo,
@@ -415,23 +418,86 @@ class HGSmartLastMealSensor(_HGSmartAttributeSensor):
         return {"rfid_tag": parsed["tag"]} if parsed else None
 
 
-class HGSmartLastScheduledFeedSensor(_HGSmartAttributeSensor):
+class _HGSmartFeedTimeSensor(_HGSmartAttributeSensor, RestoreSensor):
+    """Timestamp of the last feed from a frame that only reports a time of day.
+
+    The frame keeps its value until the next feed, so the date is fixed when
+    the value changes, instead of being guessed again on every update (which
+    would move a feed from yesterday to today once its time of day passes).
+    """
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _raw: str | None = None
+    _time: datetime | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the date of a feed seen before the restart."""
+        await super().async_added_to_hass()
+        parsed = self._parsed()
+        last = await self.async_get_last_sensor_data()
+        restored = last.native_value if last else None
+        if (
+            parsed is not None
+            and isinstance(restored, datetime)
+            and restored <= dt_util.utcnow()
+            and (restored.hour, restored.minute)
+            == (parsed["time"].hour, parsed["time"].minute)
+        ):
+            self._raw = self._raw_value()
+            self._time = dt_util.as_utc(restored)
+        self._update_time()
+
+    def _handle_coordinator_update(self) -> None:
+        self._update_time()
+        super()._handle_coordinator_update()
+
+    def _raw_value(self) -> str:
+        device_data = self.coordinator.data.get(self.device_id) or {}
+        attributes = device_data.get("attributes") or {}
+        return str(attributes.get(self._attribute) or "").strip()
+
+    def _update_time(self) -> None:
+        parsed = self._parsed()
+        if parsed is None:
+            self._raw = self._time = None
+            return
+        raw = self._raw_value()
+        latest = parsed["time"]  # most recent past occurrence of the time of day
+        if raw != self._raw or self._time is None:
+            self._raw, self._time = raw, latest
+        elif latest > self._time and self._repeats_on(parsed, latest):
+            self._time = latest
+
+    def _repeats_on(self, parsed: dict[str, Any], when: datetime) -> bool:
+        """Return whether an unchanged frame means another feed at ``when``."""
+        return False
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the time of the last feed."""
+        return self._time
+
+
+class HGSmartLastScheduledFeedSensor(_HGSmartFeedTimeSensor):
     """When the last scheduled meal was dispensed (SF35 ``autofoodframe``)."""
 
     _attribute = "autofoodframe"
     _parser = staticmethod(parse_auto_feed_frame)
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:calendar-clock"
 
     def __init__(self, coordinator, device_id, device_info) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, device_id, device_info, "last_scheduled_feed", "Last Scheduled Feed")
 
-    @property
-    def native_value(self) -> datetime | None:
-        """Return the time of the last scheduled feed."""
-        parsed = self._parsed()
-        return parsed["time"] if parsed else None
+    def _repeats_on(self, parsed: dict[str, Any], when: datetime) -> bool:
+        """A daily schedule reports the same frame each day it runs."""
+        device_data = self.coordinator.data.get(self.device_id) or {}
+        schedule = (device_data.get("schedules") or {}).get(parsed["slot"])
+        if not schedule or not schedule.get("enabled"):
+            return False
+        suffix = schedule.get("suffix", "")
+        # The weekday mask is in UTC days, Monday first
+        return not has_weekday_mask(suffix) or suffix[1 + when.weekday()] == "1"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -442,23 +508,16 @@ class HGSmartLastScheduledFeedSensor(_HGSmartAttributeSensor):
         return {"portions": parsed["portions"], "schedule": parsed["slot"] + 1}
 
 
-class HGSmartLastManualFeedSensor(_HGSmartAttributeSensor):
+class HGSmartLastManualFeedSensor(_HGSmartFeedTimeSensor):
     """When food was last dispensed manually (SF35 ``userfoodframe``)."""
 
     _attribute = "userfoodframe"
     _parser = staticmethod(parse_manual_feed_frame)
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:hand-pointing-down"
 
     def __init__(self, coordinator, device_id, device_info) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, device_id, device_info, "last_manual_feed", "Last Manual Feed")
-
-    @property
-    def native_value(self) -> datetime | None:
-        """Return the time of the last manual feed."""
-        parsed = self._parsed()
-        return parsed["time"] if parsed else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -467,4 +526,3 @@ class HGSmartLastManualFeedSensor(_HGSmartAttributeSensor):
         if not parsed:
             return None
         return {"portions": parsed["portions"], "source": parsed["source"]}
-
