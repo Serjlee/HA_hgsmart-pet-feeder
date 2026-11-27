@@ -1,5 +1,5 @@
 """Helper functions for the HGSmart Pet Feeder integration."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any, TypedDict
 
@@ -178,6 +178,80 @@ def local_days_to_mask(
     """Convert local weekday names (mon..sun) to a UTC "_MTWTFSS" mask."""
     local = "_" + "".join("1" if day in days else "0" for day in WEEKDAYS)
     return shift_weekday_mask(local, utc_day_offset(utc_hour, utc_minute, offset=offset))
+
+
+def parse_batinfo(attributes: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Parse the SF35 ``batinfo`` attribute, e.g. "20100".
+
+    Format "PCLLL": P battery present (2) or not (0), C charging (1/0), LLL level
+    in percent, 255 when there is no battery. Seen on real devices: "20100"
+    (battery, mains), "21100" (charging after mains returned), "00255" (no battery).
+    """
+    raw = str((attributes or {}).get("batinfo", "")).strip()
+    if len(raw) != 5 or not raw.isdigit():
+        return None
+    level = int(raw[2:])
+    present = raw[0] != "0" and level <= 100
+    return {
+        "present": present,
+        "charging": present and raw[1] == "1",
+        "level": level if present else None,
+    }
+
+
+def _last_utc_occurrence(hour: int, minute: int) -> datetime | None:
+    """Return the most recent past UTC datetime with this time of day."""
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    now = dt_util.utcnow()
+    when = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if when > now:
+        when -= timedelta(days=1)
+    return when
+
+
+def parse_auto_feed_frame(raw: Any) -> dict[str, Any] | None:
+    """Parse SF35 ``autofoodframe`` "DHHMMPP": last scheduled feed.
+
+    D schedule slot, HHMM actual dispense time (UTC), PP portions, e.g.
+    "1121614" = slot 1 (shown as schedule 2) dispensed 14 portions at 12:16 UTC.
+    "0" when nothing was dispensed yet. Only the time of day is sent, so the
+    date is assumed to be the most recent one with that time.
+    """
+    raw = str(raw or "").strip()
+    if len(raw) != 7 or not raw.isdigit():
+        return None
+    when = _last_utc_occurrence(int(raw[1:3]), int(raw[3:5]))
+    if when is None:
+        return None
+    return {"time": when, "slot": int(raw[0]), "portions": int(raw[5:7])}
+
+
+def parse_manual_feed_frame(raw: Any) -> dict[str, Any] | None:
+    """Parse SF35 ``userfoodframe`` "XXHHMMPP": last manual feed.
+
+    HHMM time (UTC), PP portions, e.g. "01034602" = 2 portions at 03:46 UTC.
+    XX is 01 or 02, meaning unknown (maybe app vs. button); kept as ``source``.
+    """
+    raw = str(raw or "").strip()
+    if len(raw) != 8 or not raw.isdigit():
+        return None
+    when = _last_utc_occurrence(int(raw[2:4]), int(raw[4:6]))
+    if when is None:
+        return None
+    return {"time": when, "portions": int(raw[6:8]), "source": raw[0:2]}
+
+
+def parse_eattime(raw: Any) -> dict[str, Any] | None:
+    """Parse SF35 ``eattime`` "SSS_TAG": seconds of the last meal and a tag id.
+
+    TAG is a 15-digit number that stays the same per feeder, likely the RFID
+    tag of the pet paired with it.
+    """
+    seconds, sep, tag = str(raw or "").strip().partition("_")
+    if not sep or not seconds.isdigit():
+        return None
+    return {"seconds": int(seconds), "tag": tag or None}
 
 
 def get_max_schedule_portions(device_info: dict[str, Any]) -> int:

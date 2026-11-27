@@ -1,4 +1,5 @@
 """Sensor platform for HGSmart Pet Feeder."""
+from datetime import datetime
 import logging
 from typing import Any
 
@@ -15,7 +16,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import HGSmartDataUpdateCoordinator
-from .helpers import get_device_info
+from .helpers import (
+    get_device_info,
+    is_sf_model,
+    parse_auto_feed_frame,
+    parse_batinfo,
+    parse_eattime,
+    parse_manual_feed_frame,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,10 +40,12 @@ async def async_setup_entry(
     for device_id, device_data in coordinator.data.items():
         device_info = device_data["device_info"]
         
-        # Add food remaining sensor
-        entities.append(
-            HGSmartFoodRemainingSensor(coordinator, device_id, device_info)
-        )
+        # SF feeders have no food level: "remaining" is the S-series refill
+        # estimate, which their app doesn't offer, so it would always read 0
+        if not is_sf_model(device_info):
+            entities.append(
+                HGSmartFoodRemainingSensor(coordinator, device_id, device_info)
+            )
         
         # Add desiccant expiry sensor
         entities.append(
@@ -48,6 +58,8 @@ async def async_setup_entry(
         )
 
         model = str(device_info.get("type", "")).upper()
+        # SF-series (RFID) feeders report their single bowl as type "0"
+        single_bowl_type = "0" if model.startswith("SF") else "1"
         if model.startswith("S"):
             model = model[1:]
         hopper_type = model[0] if len(model) >= 1 else "1"
@@ -70,11 +82,20 @@ async def async_setup_entry(
                 )
             else:
                 entities.append(
-                    HGSmartEatingCountSensor(coordinator, device_id, device_info, None, "1")
+                    HGSmartEatingCountSensor(coordinator, device_id, device_info, None, single_bowl_type)
                 )
                 entities.append(
-                    HGSmartEatingDurationSensor(coordinator, device_id, device_info, None, "1")
+                    HGSmartEatingDurationSensor(coordinator, device_id, device_info, None, single_bowl_type)
                 )
+
+        # SF35 last meal / last feed sensors (absent on S-series)
+        attributes = device_data.get("attributes") or {}
+        if "eattime" in attributes:
+            entities.append(HGSmartLastMealSensor(coordinator, device_id, device_info))
+        if "autofoodframe" in attributes:
+            entities.append(HGSmartLastScheduledFeedSensor(coordinator, device_id, device_info))
+        if "userfoodframe" in attributes:
+            entities.append(HGSmartLastManualFeedSensor(coordinator, device_id, device_info))
 
         # Add today's events sensor
         entities.append(
@@ -192,6 +213,10 @@ class HGSmartBatteryLevelSensor(HGSmartSensorBase):
                     return int(electric)
                 except ValueError:
                     return None
+            # SF35 reports the level inside "batinfo" instead
+            batinfo = parse_batinfo(device_data["attributes"])
+            if batinfo:
+                return batinfo["level"]
         return None
 
 
@@ -344,3 +369,102 @@ class HGSmartTodayEventsSensor(HGSmartSensorBase):
                 attrs["last_event_desc"] = first.get("eventDesc")
                 attrs["last_event_code"] = first.get("event")
         return attrs
+
+
+class _HGSmartAttributeSensor(HGSmartSensorBase):
+    """Base for sensors parsed from one attribute of the payload."""
+
+    _attribute: str
+    _parser: Any
+
+    def __init__(self, coordinator, device_id, device_info, key: str, name: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info)
+        self._attr_unique_id = f"{device_id}_{key}"
+        self._attr_name = f"{device_info['name']} {name}"
+
+    def _parsed(self) -> dict[str, Any] | None:
+        device_data = self.coordinator.data.get(self.device_id) or {}
+        attributes = device_data.get("attributes") or {}
+        return type(self)._parser(attributes.get(self._attribute))
+
+
+class HGSmartLastMealSensor(_HGSmartAttributeSensor):
+    """How long the pet ate at its last visit (SF35 ``eattime``)."""
+
+    _attribute = "eattime"
+    _parser = staticmethod(parse_eattime)
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_icon = "mdi:food-drumstick"
+
+    def __init__(self, coordinator, device_id, device_info) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info, "last_meal_duration", "Last Meal Duration")
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the seconds of the last meal."""
+        parsed = self._parsed()
+        return parsed["seconds"] if parsed else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the tag id reported with the meal."""
+        parsed = self._parsed()
+        return {"rfid_tag": parsed["tag"]} if parsed else None
+
+
+class HGSmartLastScheduledFeedSensor(_HGSmartAttributeSensor):
+    """When the last scheduled meal was dispensed (SF35 ``autofoodframe``)."""
+
+    _attribute = "autofoodframe"
+    _parser = staticmethod(parse_auto_feed_frame)
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:calendar-clock"
+
+    def __init__(self, coordinator, device_id, device_info) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info, "last_scheduled_feed", "Last Scheduled Feed")
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the time of the last scheduled feed."""
+        parsed = self._parsed()
+        return parsed["time"] if parsed else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return portions and the schedule it came from (1-based)."""
+        parsed = self._parsed()
+        if not parsed:
+            return None
+        return {"portions": parsed["portions"], "schedule": parsed["slot"] + 1}
+
+
+class HGSmartLastManualFeedSensor(_HGSmartAttributeSensor):
+    """When food was last dispensed manually (SF35 ``userfoodframe``)."""
+
+    _attribute = "userfoodframe"
+    _parser = staticmethod(parse_manual_feed_frame)
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:hand-pointing-down"
+
+    def __init__(self, coordinator, device_id, device_info) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_id, device_info, "last_manual_feed", "Last Manual Feed")
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the time of the last manual feed."""
+        parsed = self._parsed()
+        return parsed["time"] if parsed else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return portions and the raw source code."""
+        parsed = self._parsed()
+        if not parsed:
+            return None
+        return {"portions": parsed["portions"], "source": parsed["source"]}
+
