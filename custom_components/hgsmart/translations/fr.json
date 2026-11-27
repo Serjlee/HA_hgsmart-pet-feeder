@@ -1,0 +1,14 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "title": "Paramètres HGSmart",
+        "description": "La compensation vérifie le décalage UTC de Home Assistant toutes les cinq minutes et au démarrage, puis ajuste les programmations de la gamelle lorsqu’il change. À l’activation, les horaires actuels servent de référence : les décalages déjà survenus ne sont pas corrigés.",
+        "data": {
+          "update_interval": "Intervalle de mise à jour (minutes)",
+          "compensate_timezone_offset": "Compenser automatiquement les changements d’heure"
+        }
+      }
+    }
+  }
+}

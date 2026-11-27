@@ -1,0 +1,1 @@
+pytest-homeassistant==2026.11.3
