@@ -12,7 +12,12 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, MAX_SCHEDULE_SLOTS
-from .helpers import ScheduleSlotData, parse_plan_value, shift_weekday_mask
+from .helpers import (
+    ScheduleSlotData,
+    is_plan_attribute,
+    parse_plan_value,
+    shift_weekday_mask,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -53,6 +58,15 @@ def _parse_slot(attributes: dict[str, Any], slot: int) -> ScheduleSlotData | Non
     if len(value) < 8 or value[0] not in ("0", "1"):
         return None
     return parse_plan_value(value)
+
+
+def _has_schedules(attributes: Any) -> bool:
+    """Return whether a snapshot reports plans at all.
+
+    The cloud reports every slot, empty ones as "0". A reply without any plan
+    attribute (e.g. ``data: {}``) is incomplete and proves no deletion.
+    """
+    return isinstance(attributes, dict) and any(map(is_plan_attribute, attributes))
 
 
 def _minutes(schedule: ScheduleSlotData) -> int:
@@ -149,13 +163,18 @@ class HGSmartScheduleOffsets:
     def observe_schedule_deletions(
         self, device_id: str, attributes: dict[str, Any]
     ) -> bool:
-        """Retire references for slots missing or deleted in a complete snapshot."""
-        if (records := self._slots.get(device_id)) is None:
+        """Retire references for slots that no longer hold a usable schedule.
+
+        Anything compensation cannot act on counts: deleted, missing, or
+        unparsable. Keeping such a record would leave a correction pending
+        forever and re-read the cloud on every check.
+        """
+        records = self._slots.get(device_id)
+        if records is None or not _has_schedules(attributes):
             return False
         changed = False
         for slot in tuple(records):
-            value = str(attributes.get(f"plan{slot}", "0"))
-            if value == "0" or value[:1] in ("2", "3"):
+            if _parse_slot(attributes, int(slot)) is None:
                 del records[slot]
                 changed = True
         return changed
@@ -221,7 +240,7 @@ class HGSmartScheduleOffsets:
         )
         if correction_needed:
             attributes = await self.api.get_device_attributes(device_id)
-            if attributes is None or self._stopped:
+            if not _has_schedules(attributes) or self._stopped:
                 return False
             self.observe_schedule_deletions(device_id, attributes)
         elif not available:
@@ -263,7 +282,8 @@ class HGSmartScheduleOffsets:
         if self._stopped:
             return False
         confirmed = await self.api.get_device_attributes(device_id)
-        if confirmed is None or self._stopped:
+        # An incomplete reply must not replace the cached plans either.
+        if not _has_schedules(confirmed) or self._stopped:
             return False
         self.observe_schedule_deletions(device_id, confirmed)
         self.coordinator.async_update_schedule_snapshot(device_id, confirmed)

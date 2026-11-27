@@ -388,7 +388,7 @@ async def test_older_poll_cannot_restore_pre_correction_schedule(
     cloud.api.set_schedule.assert_awaited_with(FEEDER, 0, 19, 30, 3, True, suffix="")
 
 
-@pytest.mark.parametrize("removed_plan", [{"plan0": "0"}, {}])
+@pytest.mark.parametrize("removed_plan", [{"plan0": "0"}, {"plan1": "0"}])
 async def test_poll_observes_deleted_slot_before_a_recreation(
     hass, coordinator, cloud, clock, storage, removed_plan
 ):
@@ -408,6 +408,62 @@ async def test_poll_observes_deleted_slot_before_a_recreation(
     cloud.api.get_device_attributes.assert_not_awaited()
     cloud.api.set_schedule.assert_not_awaited()
     assert (await storage.async_load())[FEEDER]["0"] == {"offset": 60}
+
+
+async def test_reply_without_plans_keeps_reference_and_correction(
+    hass, coordinator, cloud, clock, storage
+):
+    manager = await start(hass, coordinator, cloud)
+    cloud.api.get_device_attributes.side_effect = None
+    cloud.api.get_device_attributes.return_value = {}
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    clock.move_to(WINTER)
+    await manager.async_check()
+
+    cloud.api.set_schedule.assert_not_awaited()
+    assert await storage.async_load() == {FEEDER: {"0": {"offset": 120}}}
+
+    cloud.api.get_device_attributes.side_effect = cloud.read
+    clock.tick(timedelta(minutes=10))
+    await manager.async_check()
+    cloud.api.set_schedule.assert_awaited_once_with(FEEDER, 0, 19, 30, 2, True, suffix="")
+    assert await storage.async_load() == {FEEDER: {"0": {"offset": 60}}}
+
+
+async def test_confirmation_without_plans_keeps_cached_schedules(
+    hass, coordinator, cloud, clock, storage
+):
+    manager = await start(hass, coordinator, cloud)
+    replies = iter([None, {}])
+
+    async def read(device):
+        reply = next(replies, None)
+        return await cloud.read(device) if reply is None else reply
+
+    cloud.api.get_device_attributes.side_effect = read
+    clock.move_to(WINTER)
+    await manager.async_check()
+
+    cloud.api.set_schedule.assert_awaited_once()
+    assert coordinator.data[FEEDER]["schedules"][0]["hour"] == 18
+    assert (await storage.async_load())[FEEDER]["0"]["pending"]["target"] == 19 * 60 + 30
+
+
+async def test_unparsable_slot_is_retired_without_rereading_cloud(
+    hass, coordinator, cloud, clock, storage
+):
+    manager = await start(hass, coordinator, cloud)
+    cloud.attributes[FEEDER]["plan0"] = "11830000"  # zero portions
+    clock.move_to(WINTER)
+    await manager.async_check()
+    cloud.api.set_schedule.assert_not_awaited()
+    assert (await storage.async_load())[FEEDER] == {}
+
+    cloud.api.get_device_attributes.reset_mock()
+    clock.tick(timedelta(minutes=5))
+    await manager.async_check()
+    cloud.api.get_device_attributes.assert_not_awaited()
 
 
 async def test_unavailable_poll_does_not_retire_schedule_reference(
